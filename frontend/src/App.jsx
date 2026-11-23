@@ -1,4 +1,4 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
@@ -13,10 +13,11 @@ import TeacherTraining from "./pages/TeacherTraining";
 import StudentDashboard from "./pages/StudentDashboard";
 import StudentLessons from "./pages/StudentLessons";
 import ParentDashboard from "./pages/ParentDashboard";
-import Leaderboard from "./pages/Leaderboard";
 import RewardsStore from "./pages/RewardsStore";
 import ProtectedRoute from "./components/ProtectedRoute";
 import "./index.css";
+
+const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 
 export default function App() {
   return (
@@ -24,6 +25,20 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/leaderboard"
+          element={
+            <Suspense
+              fallback={
+                <div className="flex min-h-screen items-center justify-center">
+                  جارٍ تحميل لوحة الشرف...
+                </div>
+              }
+            >
+              <Leaderboard />
+            </Suspense>
+          }
+        />
         <Route
           path="/admin"
           element={
@@ -109,16 +124,6 @@ export default function App() {
           element={
             <ProtectedRoute allowedRoles={["Parent"]}>
               <ParentDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/leaderboard"
-          element={
-            <ProtectedRoute
-              allowedRoles={["SuperAdmin", "Teacher", "Student", "Parent"]}
-            >
-              <Leaderboard />
             </ProtectedRoute>
           }
         />

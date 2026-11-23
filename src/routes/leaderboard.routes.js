@@ -8,10 +8,11 @@ const {
 
 const router = express.Router();
 
+router.get("/students", getTopStudents);
+
 router.use(authMiddleware);
 router.use(roleMiddleware("SuperAdmin", "Teacher", "Student", "Parent"));
 
-router.get("/students", getTopStudents);
 router.get("/groups", getGroupsLeaderboard);
 
 module.exports = router;

@@ -2,6 +2,7 @@ const express = require("express");
 const {
   getParentDashboard,
   getChildren,
+  updateChildLeaderboardConsent,
   getChildAssignments,
   createLeaveRequest,
 } = require("../controllers/parent.controller");
@@ -14,6 +15,8 @@ const {
 const {
   childAssignmentsParamsSchema,
   leaveRequestCreateSchema,
+  childLeaderboardConsentParamsSchema,
+  leaderboardConsentSchema,
 } = require("../validation/schemas/parent.schema");
 
 const router = express.Router();
@@ -23,6 +26,12 @@ router.use(roleMiddleware("Parent"));
 
 router.get("/dashboard", getParentDashboard);
 router.get("/children", getChildren);
+router.patch(
+  "/children/:studentId/public-leaderboard-consent",
+  validateParams(childLeaderboardConsentParamsSchema),
+  validateBody(leaderboardConsentSchema),
+  updateChildLeaderboardConsent,
+);
 router.get(
   "/children/:studentId/assignments",
   validateParams(childAssignmentsParamsSchema),

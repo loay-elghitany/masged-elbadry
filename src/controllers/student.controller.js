@@ -11,7 +11,7 @@ const getStudentDashboard = async (req, res) => {
   try {
     const student = await User.findById(req.user._id)
       .select(
-        "firstName lastName email phone role teacherId avatar points badges evaluationStreak",
+        "firstName lastName email phone role teacherId avatar points badges evaluationStreak publicLeaderboardOptIn",
       )
       .populate("teacherId", "firstName lastName email phone")
       .populate({
@@ -69,6 +69,34 @@ const getStudentDashboard = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً.",
+    });
+  }
+};
+
+const updateStudentLeaderboardConsent = async (req, res) => {
+  try {
+    const student = await User.findById(req.user._id);
+    if (!student) {
+      return res
+        .status(404)
+        .json({ success: false, message: "الطالب غير موجود." });
+    }
+
+    student.publicLeaderboardOptIn = req.body.enabled;
+    student.publicLeaderboardConsentAt = req.body.enabled ? new Date() : null;
+    student.publicLeaderboardConsentBy = req.body.enabled
+      ? req.user._id
+      : null;
+    await student.save();
+
+    res.json({
+      publicLeaderboardOptIn: student.publicLeaderboardOptIn,
+    });
+  } catch (error) {
+    console.error("Failed to update student leaderboard consent:", error);
     res.status(500).json({
       success: false,
       message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً.",
@@ -261,6 +289,7 @@ const submitQuiz = async (req, res, next) => {
 
 module.exports = {
   getStudentDashboard,
+  updateStudentLeaderboardConsent,
   updateStudentAvatar,
   getStudentChallenges,
   getMyAssignments,

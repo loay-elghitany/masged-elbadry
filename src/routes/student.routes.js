@@ -1,6 +1,7 @@
 const express = require("express");
 const {
   getStudentDashboard,
+  updateStudentLeaderboardConsent,
   updateStudentAvatar,
   getStudentChallenges,
   getMyAssignments,
@@ -28,6 +29,7 @@ const {
   quizSubmitSchema,
   redeemRewardSchema,
   avatarUpdateSchema,
+  leaderboardConsentSchema,
 } = require("../validation/schemas/student.schema");
 
 const router = express.Router();
@@ -36,6 +38,11 @@ router.use(authMiddleware);
 router.use(roleMiddleware("Student"));
 
 router.get("/dashboard", getStudentDashboard);
+router.patch(
+  "/public-leaderboard-consent",
+  validateBody(leaderboardConsentSchema),
+  updateStudentLeaderboardConsent,
+);
 router.get("/challenges", getStudentChallenges);
 router.get("/my-assignments", getMyAssignments);
 router.get(

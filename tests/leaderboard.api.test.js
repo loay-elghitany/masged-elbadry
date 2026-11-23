@@ -3,12 +3,15 @@ const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const jwt = require("jsonwebtoken");
 const app = require("../src/app");
+const Badge = require("../src/models/badge.model");
 const User = require("../src/models/user.model");
 
 jest.mock("../src/services/quran.service");
 
 let mongoServer;
 let studentToken;
+let student;
+let teacher;
 
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
@@ -19,7 +22,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  const teacher = new User({
+  teacher = new User({
     firstName: "Teacher",
     lastName: "User",
     email: "teacher@example.com",
@@ -28,7 +31,7 @@ beforeEach(async () => {
   });
   await teacher.save();
 
-  const student = new User({
+  student = new User({
     firstName: "Student",
     lastName: "User",
     email: "student@example.com",
@@ -58,13 +61,57 @@ afterAll(async () => {
 });
 
 describe("GET /api/leaderboard", () => {
-  it("returns the students leaderboard and the groups leaderboard", async () => {
-    const studentsResponse = await request(app)
-      .get("/api/leaderboard/students")
-      .set("Authorization", `Bearer ${studentToken}`);
+  it("makes the opted-in student leaderboard public and exposes display fields only", async () => {
+    const privateStudentResponse = await request(app).get(
+      "/api/leaderboard/students",
+    );
+
+    expect(privateStudentResponse.status).toBe(200);
+    expect(privateStudentResponse.body.leaderboard).toEqual([]);
+
+    const badge = await Badge.create({
+      name: "قارئ متميز",
+      icon: "🌟",
+      description: "Private badge description",
+    });
+    student.points = 125;
+    student.avatar = "https://example.com/avatar.png";
+    student.badges = [
+      {
+        badgeId: badge._id,
+        awardedBy: teacher._id,
+      },
+    ];
+    student.publicLeaderboardOptIn = true;
+    await student.save();
+
+    const studentsResponse = await request(app).get(
+      "/api/leaderboard/students",
+    );
 
     expect(studentsResponse.status).toBe(200);
-    expect(studentsResponse.body).toHaveProperty("leaderboard");
+    expect(studentsResponse.body.leaderboard).toEqual([
+      {
+        rank: 1,
+        firstName: "Student",
+        lastName: "User",
+        points: 125,
+        avatar: "https://example.com/avatar.png",
+        badges: [{ name: "قارئ متميز", icon: "🌟" }],
+      },
+    ]);
+    const responseJson = JSON.stringify(studentsResponse.body);
+    expect(responseJson).not.toContain(student.email);
+    expect(responseJson).not.toContain(student._id.toString());
+    expect(responseJson).not.toContain(teacher._id.toString());
+    expect(responseJson).not.toContain("Private badge description");
+  });
+
+  it("keeps group rankings protected", async () => {
+    const guestGroupsResponse = await request(app).get(
+      "/api/leaderboard/groups",
+    );
+    expect(guestGroupsResponse.status).toBe(401);
 
     const groupsResponse = await request(app)
       .get("/api/leaderboard/groups")

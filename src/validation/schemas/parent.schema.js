@@ -11,7 +11,17 @@ const leaveRequestCreateSchema = Joi.object({
   reason: Joi.string().trim().min(5).max(1000).required(),
 });
 
+const childLeaderboardConsentParamsSchema = Joi.object({
+  studentId: objectIdSchema,
+});
+
+const leaderboardConsentSchema = Joi.object({
+  enabled: Joi.boolean().required(),
+});
+
 module.exports = {
   childAssignmentsParamsSchema,
   leaveRequestCreateSchema,
+  childLeaderboardConsentParamsSchema,
+  leaderboardConsentSchema,
 };

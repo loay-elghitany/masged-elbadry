@@ -1,6 +1,40 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
+function AcademyBrand() {
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <span
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#e7c77f]/35 bg-white/10 text-[#e7c77f]"
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 40 40" fill="none" className="h-7 w-7">
+          <path
+            d="M20 5.5c-7.2 0-13 5.8-13 13 0 5.2 3.1 9.7 7.5 11.8V15.8c0-2.2 1.8-4 4-4h5.2A12.9 12.9 0 0 0 20 5.5Z"
+            fill="currentColor"
+            opacity=".9"
+          />
+          <path
+            d="M20 19.2c0-2.2 1.8-4 4-4h7v16.4H24c-1.6 0-3 .8-4 2-1-1.2-2.4-2-4-2h-7V19.2h7c2.2 0 4 1.8 4 4"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinejoin="round"
+          />
+          <path d="M20 22v11.6" stroke="currentColor" strokeWidth="1.7" />
+        </svg>
+      </span>
+      <span className="min-w-0 leading-tight">
+        <span className="block truncate font-kufi text-lg font-bold">
+          مسجد البدري
+        </span>
+        <span className="mt-1 block truncate text-xs text-white/65">
+          لتحفيظ القرآن الكريم
+        </span>
+      </span>
+    </div>
+  );
+}
+
 export default function Navbar({ role }) {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const navigate = useNavigate();
@@ -52,15 +86,39 @@ export default function Navbar({ role }) {
 
   const dashboardPath = getDashboardPath(role);
 
+  if (!role) {
+    return (
+      <nav className="bg-quran-800 text-white">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4">
+          <AcademyBrand />
+          <div className="flex items-center gap-2 text-sm sm:gap-4">
+            <button
+              type="button"
+              onClick={() => navigateTo("/")}
+              className="rounded-xl px-4 py-2 font-semibold transition-colors hover:bg-white/10"
+            >
+              الرئيسية
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateTo("/login")}
+              className="rounded-xl bg-white px-4 py-2 font-semibold text-quran-800 transition-colors hover:bg-slate-100"
+            >
+              تسجيل الدخول
+            </button>
+          </div>
+        </div>
+      </nav>
+    );
+  }
+
   if (role === "SuperAdmin") {
     return (
       <nav className="bg-quran-700 text-white">
         <div className="mx-auto w-full max-w-7xl px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex min-w-0 items-center justify-between gap-4">
-              <div className="min-w-0 truncate text-2xl font-bold font-kufi">
-                كتّاب رتل وارتق
-              </div>
+              <AcademyBrand />
               <button
                 type="button"
                 onClick={() => setShowMobileMenu((prev) => !prev)}
@@ -135,9 +193,7 @@ export default function Navbar({ role }) {
       <div className="max-w-7xl mx-auto w-full px-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center justify-between gap-4">
-            <div className="text-2xl font-bold font-kufi min-w-0 truncate">
-              كتّاب رتل وارتق
-            </div>
+            <AcademyBrand />
             <button
               type="button"
               onClick={() => setShowMobileMenu((prev) => !prev)}

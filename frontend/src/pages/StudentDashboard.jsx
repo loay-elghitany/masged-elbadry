@@ -140,6 +140,9 @@ export default function StudentDashboard() {
   const [ticketDescription, setTicketDescription] = useState("");
   const [ticketAnonymous, setTicketAnonymous] = useState(false);
   const [ticketSubmitLoading, setTicketSubmitLoading] = useState(false);
+  const [leaderboardConsentUpdating, setLeaderboardConsentUpdating] =
+    useState(false);
+  const [leaderboardConsentError, setLeaderboardConsentError] = useState("");
   const previousRankRef = useRef(null);
 
   const pointsBalance =
@@ -347,6 +350,31 @@ export default function StudentDashboard() {
       setTicketsError(getApiErrorMessage(error, "حدث خطأ أثناء إرسال الطلب."));
     } finally {
       setTicketSubmitLoading(false);
+    }
+  };
+
+  const handleLeaderboardConsentChange = async (enabled) => {
+    setLeaderboardConsentUpdating(true);
+    setLeaderboardConsentError("");
+    try {
+      const response = await api.patch(
+        "/student/public-leaderboard-consent",
+        { enabled },
+      );
+      setDashboard((current) => ({
+        ...current,
+        student: {
+          ...current.student,
+          publicLeaderboardOptIn: response.data.publicLeaderboardOptIn,
+        },
+      }));
+    } catch (error) {
+      console.error("Failed to update public leaderboard consent:", error);
+      setLeaderboardConsentError(
+        getApiErrorMessage(error, "تعذر تحديث الموافقة. حاول مرة أخرى."),
+      );
+    } finally {
+      setLeaderboardConsentUpdating(false);
     }
   };
 
@@ -570,6 +598,37 @@ export default function StudentDashboard() {
             </div>
           </div>
         </header>
+
+        <section className="mb-8 rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm sm:p-6">
+          <label className="flex cursor-pointer items-start gap-4">
+            <input
+              type="checkbox"
+              checked={Boolean(dashboard.student.publicLeaderboardOptIn)}
+              disabled={leaderboardConsentUpdating}
+              onChange={(event) =>
+                handleLeaderboardConsentChange(event.target.checked)
+              }
+              className="mt-1 h-5 w-5 accent-emerald-700"
+            />
+            <span>
+              <span className="block font-semibold text-slate-900">
+                أوافق على الظهور في لوحة الشرف العامة
+              </span>
+              <span className="mt-1 block text-sm leading-6 text-slate-600">
+                عند تفعيل هذا الخيار، سيظهر اسمك وصورتك الرمزية ونقاطك وأوسمتك
+                للزوار. يمكنك إلغاء الموافقة في أي وقت.
+              </span>
+            </span>
+          </label>
+          {leaderboardConsentUpdating && (
+            <p className="mt-3 text-sm text-slate-500">جارٍ حفظ اختيارك...</p>
+          )}
+          {leaderboardConsentError && (
+            <p role="alert" className="mt-3 text-sm text-rose-700">
+              {leaderboardConsentError}
+            </p>
+          )}
+        </section>
 
         <section className="rounded-3xl bg-white p-4 md:p-6 shadow-sm border border-slate-200 mb-8">
           <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

@@ -534,7 +534,10 @@ export default function SuperAdminDashboard() {
         </head>
         <body>
           <div class="report-root">
-            <h1 style="text-align:center; font-size:20px; margin:8px 0;">تقرير المعلمين والطلاب - سجل التقييمات</h1>
+            <header style="text-align:center; border-bottom:2px solid #0f766e; padding-bottom:8px; margin:8px 0 16px;">
+              <h1 style="color:#0f766e; font-size:20px; margin:0 0 4px;">مسجد البدري لتحفيظ القرآن الكريم</h1>
+              <div style="font-size:14px; color:#475569;">تقرير المعلمين والطلاب - سجل التقييمات</div>
+            </header>
             ${teachersHtml}
           </div>
         </body>
@@ -610,7 +613,7 @@ export default function SuperAdminDashboard() {
         return `<div class="group-card"><div class="group-title">${escapeHtml(group.groupName || "")} (المعلم: ${escapeHtml(group.teacherName || "")})</div><div class="group-points">إجمالي نقاط الحلقة: ${escapeHtml(String(group.totalGroupPoints || 0))} 🪙 | عدد الطلاب: ${escapeHtml(String(group.allStudentsCount || 0))}</div><ul class="top-list">${topList || "<li>لا يوجد طلاب مسجلين</li>"}</ul></div>`;
       })
       .join("");
-    return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>لوحة شرف الأوائل وصدارة المجموعات</title><style>@page { size: A4; margin: 10mm; } body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #0f172a; margin: 0; padding: 10px; direction: rtl; } .report-header { text-align: center; border-bottom: 2px solid #0f766e; padding-bottom: 8px; margin-bottom: 15px; } .report-header h1 { color: #0f766e; margin: 0 0 4px 0; font-size: 20px; } .section-title { font-size: 15px; font-weight: bold; color: #0f766e; margin: 15px 0 8px 0; border-right: 4px solid #0f766e; padding-right: 8px; } table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; } th, td { border: 1px solid #cbd5e1; padding: 6px 8px; } th { background: #f1f5f9; color: #334155; } .groups-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; } .group-card { border: 1px solid #cbd5e1; border-radius: 10px; padding: 8px 12px; background: #fafafa; break-inside: avoid; } .group-title { font-weight: bold; color: #0f766e; font-size: 13px; } .group-points { font-size: 11px; color: #64748b; margin-bottom: 6px; } .top-list { margin: 0; padding-right: 18px; font-size: 11px; }</style></head><body><div class="report-header"><h1>🏆 لوحة شرف الأوائل وصدارة الحلقات القرآنية</h1><div style="font-size:11px; color:#64748b;">تاريخ التصدير: ${new Date().toLocaleDateString("ar-EG")}</div></div><div class="section-title">🌟 قائمة الـ 20 الأوائل على مستوى الأكاديمية</div><table><thead><tr><th style="width: 15%;">الترتيب</th><th>اسم الطالب</th><th>المعلم</th><th style="width: 20%;">إجمالي النقاط</th></tr></thead><tbody>${topStudentsRows}</tbody></table><div><div class="section-title">👥 أوائل الحلقات والمجموعات القرآنية</div><div class="groups-grid">${groupsHtml}</div></div></body></html>`;
+    return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>مسجد البدري لتحفيظ القرآن الكريم - لوحة الشرف</title><style>@page { size: A4; margin: 10mm; } body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #0f172a; margin: 0; padding: 10px; direction: rtl; } .report-header { text-align: center; border-bottom: 2px solid #0f766e; padding-bottom: 8px; margin-bottom: 15px; } .report-header h1 { color: #0f766e; margin: 0 0 4px 0; font-size: 20px; } .section-title { font-size: 15px; font-weight: bold; color: #0f766e; margin: 15px 0 8px 0; border-right: 4px solid #0f766e; padding-right: 8px; } table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; } th, td { border: 1px solid #cbd5e1; padding: 6px 8px; } th { background: #f1f5f9; color: #334155; } .groups-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; } .group-card { border: 1px solid #cbd5e1; border-radius: 10px; padding: 8px 12px; background: #fafafa; break-inside: avoid; } .group-title { font-weight: bold; color: #0f766e; font-size: 13px; } .group-points { font-size: 11px; color: #64748b; margin-bottom: 6px; } .top-list { margin: 0; padding-right: 18px; font-size: 11px; }</style></head><body><div class="report-header"><h1>مسجد البدري لتحفيظ القرآن الكريم</h1><div style="font-size:14px; color:#475569;">لوحة شرف الأوائل وصدارة الحلقات القرآنية</div><div style="font-size:11px; color:#64748b;">تاريخ التصدير: ${new Date().toLocaleDateString("ar-EG")}</div></div><div class="section-title">🌟 قائمة الـ 20 الأوائل على مستوى الأكاديمية</div><table><thead><tr><th style="width: 15%;">الترتيب</th><th>اسم الطالب</th><th>المعلم</th><th style="width: 20%;">إجمالي النقاط</th></tr></thead><tbody>${topStudentsRows}</tbody></table><div><div class="section-title">👥 أوائل الحلقات والمجموعات القرآنية</div><div class="groups-grid">${groupsHtml}</div></div></body></html>`;
   };
 
   const handleExportTopStudents = async () => {
@@ -775,7 +778,7 @@ export default function SuperAdminDashboard() {
             <div class="card-top">
               <div class="card-icon">✦</div>
               <div>
-                <div class="academy-name">مدرسة القرآن الكريم</div>
+                <div class="academy-name">مسجد البدري لتحفيظ القرآن الكريم</div>
                 <div class="academy-subtitle">بطاقة تعريف الطالب</div>
               </div>
             </div>

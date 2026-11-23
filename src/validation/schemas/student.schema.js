@@ -24,10 +24,15 @@ const avatarUpdateSchema = Joi.object({
   avatar: Joi.string().uri().required(),
 });
 
+const leaderboardConsentSchema = Joi.object({
+  enabled: Joi.boolean().required(),
+});
+
 module.exports = {
   assignmentReadParamsSchema,
   quizSubmitParamsSchema,
   quizSubmitSchema,
   redeemRewardSchema,
   avatarUpdateSchema,
+  leaderboardConsentSchema,
 };

@@ -163,3 +163,51 @@ describe("POST /api/parent/leave-requests", () => {
     expect(response.status).toBe(403);
   });
 });
+
+describe("PATCH /api/parent/children/:studentId/public-leaderboard-consent", () => {
+  it("allows a parent to manage consent for their own child only", async () => {
+    const guestResponse = await request(app)
+      .patch(
+        `/api/parent/children/${student._id}/public-leaderboard-consent`,
+      )
+      .send({ enabled: true });
+    expect(guestResponse.status).toBe(401);
+
+    const optInResponse = await request(app)
+      .patch(
+        `/api/parent/children/${student._id}/public-leaderboard-consent`,
+      )
+      .set("Authorization", `Bearer ${parentToken}`)
+      .send({ enabled: true });
+
+    expect(optInResponse.status).toBe(200);
+    expect(optInResponse.body.publicLeaderboardOptIn).toBe(true);
+
+    const optedInStudent = await User.findById(student._id);
+    expect(optedInStudent.publicLeaderboardConsentBy.toString()).toBe(
+      parent._id.toString(),
+    );
+
+    const otherStudent = new User({
+      firstName: "Other",
+      lastName: "Student",
+      email: "other@example.com",
+      password: "password123",
+      role: "Student",
+      teacherId: teacher._id,
+    });
+    await otherStudent.save();
+
+    const unauthorizedChildResponse = await request(app)
+      .patch(
+        `/api/parent/children/${otherStudent._id}/public-leaderboard-consent`,
+      )
+      .set("Authorization", `Bearer ${parentToken}`)
+      .send({ enabled: true });
+
+    expect(unauthorizedChildResponse.status).toBe(403);
+    expect(
+      (await User.findById(otherStudent._id)).publicLeaderboardOptIn,
+    ).toBe(false);
+  });
+});

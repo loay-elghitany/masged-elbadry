@@ -8,7 +8,7 @@ const getParentDashboard = async (req, res, next) => {
   try {
     const parent = await User.findById(req.user._id).populate({
       path: "childrenIds",
-      select: "firstName lastName email phone role teacherId",
+      select: "firstName lastName email phone role teacherId publicLeaderboardOptIn",
       populate: {
         path: "teacherId",
         select: "firstName lastName",
@@ -61,6 +61,41 @@ const getChildren = async (req, res, next) => {
     const children = await User.find({ _id: { $in: req.user.childrenIds } });
     res.json({ children });
   } catch (error) {
+    next(error);
+  }
+};
+
+const updateChildLeaderboardConsent = async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const childIds = (req.user.childrenIds || []).map((id) => id.toString());
+
+    if (!childIds.includes(studentId)) {
+      return res.status(403).json({
+        success: false,
+        message: "ليس لديك صلاحية لتحديث إعدادات هذا الطالب.",
+      });
+    }
+
+    const student = await User.findOne({ _id: studentId, role: "Student" });
+    if (!student) {
+      return res
+        .status(404)
+        .json({ success: false, message: "الطالب غير موجود." });
+    }
+
+    student.publicLeaderboardOptIn = req.body.enabled;
+    student.publicLeaderboardConsentAt = req.body.enabled ? new Date() : null;
+    student.publicLeaderboardConsentBy = req.body.enabled
+      ? req.user._id
+      : null;
+    await student.save();
+
+    res.json({
+      publicLeaderboardOptIn: student.publicLeaderboardOptIn,
+    });
+  } catch (error) {
+    console.error("Failed to update child leaderboard consent:", error);
     next(error);
   }
 };
@@ -130,6 +165,7 @@ const createLeaveRequest = async (req, res, next) => {
 module.exports = {
   getParentDashboard,
   getChildren,
+  updateChildLeaderboardConsent,
   getChildAssignments,
   createLeaveRequest,
 };

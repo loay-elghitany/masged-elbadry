@@ -375,3 +375,46 @@ describe("POST /api/student/quizzes/:id/submit", () => {
     expect(response.body.score).toBe(1);
   });
 });
+
+describe("PATCH /api/student/public-leaderboard-consent", () => {
+  it("allows a student to opt in and revoke consent", async () => {
+    const optInResponse = await request(app)
+      .patch("/api/student/public-leaderboard-consent")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({ enabled: true });
+
+    expect(optInResponse.status).toBe(200);
+    expect(optInResponse.body.publicLeaderboardOptIn).toBe(true);
+
+    const optedInStudent = await User.findById(student._id);
+    expect(optedInStudent.publicLeaderboardConsentAt).toBeInstanceOf(Date);
+    expect(optedInStudent.publicLeaderboardConsentBy.toString()).toBe(
+      student._id.toString(),
+    );
+
+    const revokeResponse = await request(app)
+      .patch("/api/student/public-leaderboard-consent")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({ enabled: false });
+
+    expect(revokeResponse.status).toBe(200);
+    expect(revokeResponse.body.publicLeaderboardOptIn).toBe(false);
+
+    const revokedStudent = await User.findById(student._id);
+    expect(revokedStudent.publicLeaderboardConsentAt).toBeNull();
+    expect(revokedStudent.publicLeaderboardConsentBy).toBeNull();
+  });
+
+  it("requires authentication and a boolean consent value", async () => {
+    const guestResponse = await request(app)
+      .patch("/api/student/public-leaderboard-consent")
+      .send({ enabled: true });
+    expect(guestResponse.status).toBe(401);
+
+    const invalidValueResponse = await request(app)
+      .patch("/api/student/public-leaderboard-consent")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({ enabled: "yes" });
+    expect(invalidValueResponse.status).toBe(400);
+  });
+});

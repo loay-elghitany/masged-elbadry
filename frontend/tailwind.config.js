@@ -3,6 +3,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
+        amiri: ["Amiri", "serif"],
         cairo: ["Cairo", "sans-serif"],
         kufi: ["Noto Kufi Arabic", "sans-serif"],
       },

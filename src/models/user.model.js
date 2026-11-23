@@ -45,6 +45,19 @@ const UserSchema = new Schema({
     trim: true,
     default: "",
   },
+  publicLeaderboardOptIn: {
+    type: Boolean,
+    default: false,
+  },
+  publicLeaderboardConsentAt: {
+    type: Date,
+    default: null,
+  },
+  publicLeaderboardConsentBy: {
+    type: Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
   teacherId: {
     type: Schema.Types.ObjectId,
     ref: "User",

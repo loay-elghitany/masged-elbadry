@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
 
@@ -8,6 +9,7 @@ const formatNumber = (value) => new Intl.NumberFormat("ar-EG").format(value);
 
 export default function Leaderboard() {
   const [user, setUser] = useState(null);
+  const [isGuest, setIsGuest] = useState(true);
   const [students, setStudents] = useState([]);
   const [groupsLeaderboard, setGroupsLeaderboard] = useState([]);
   const [activeLeaderboardTab, setActiveLeaderboardTab] =
@@ -17,19 +19,29 @@ export default function Leaderboard() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let storedUser = null;
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("jwtToken");
     const userData = localStorage.getItem("user");
     if (userData) {
-      setUser(JSON.parse(userData));
+      try {
+        storedUser = JSON.parse(userData);
+      } catch (error) {
+        console.error("Failed to parse stored user data:", error);
+      }
     }
+    const hasSession = Boolean(token && storedUser?.role);
+    setUser(hasSession ? storedUser : null);
+    setIsGuest(!hasSession);
 
     const loadLeaderboard = async () => {
       try {
-        const [studentsResponse, groupsResponse] = await Promise.all([
-          api.get("/leaderboard/students"),
-          api.get("/leaderboard/groups"),
-        ]);
+        const studentsResponse = await api.get("/leaderboard/students");
         setStudents(studentsResponse.data.leaderboard || []);
-        setGroupsLeaderboard(groupsResponse.data.groupsLeaderboard || []);
+        if (hasSession) {
+          const groupsResponse = await api.get("/leaderboard/groups");
+          setGroupsLeaderboard(groupsResponse.data.groupsLeaderboard || []);
+        }
       } catch (err) {
         console.error("فشل تحميل لوحة المتصدرين:", err);
         setError("حدث خطأ أثناء تحميل بيانات المتصدرين. حاول لاحقًا.");
@@ -67,7 +79,7 @@ export default function Leaderboard() {
       <Navbar role={user?.role} />
       <div className="max-w-7xl mx-auto w-full min-w-0 px-4 py-10 space-y-8">
         <header className="rounded-[2rem] bg-gradient-to-br from-quran-600 via-quran-700 to-quran-800 p-8 text-white shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-quran-100">
                 لوحة الصدارة
@@ -78,10 +90,29 @@ export default function Leaderboard() {
                 من التقييمات اليومية والأنشطة.
               </p>
             </div>
-            <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm backdrop-blur">
-              <p className="font-semibold">أبرز العقول والفرق</p>
-              <p className="mt-1 text-quran-100">منافسة ممتعة… ونتائج ملهمة</p>
-            </div>
+            {isGuest ? (
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  to="/"
+                  className="rounded-xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
+                >
+                  العودة إلى الرئيسية
+                </Link>
+                <Link
+                  to="/login"
+                  className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-quran-800 transition hover:bg-quran-50"
+                >
+                  تسجيل الدخول
+                </Link>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm backdrop-blur">
+                <p className="font-semibold">أبرز العقول والفرق</p>
+                <p className="mt-1 text-quran-100">
+                  منافسة ممتعة… ونتائج ملهمة
+                </p>
+              </div>
+            )}
           </div>
         </header>
 
@@ -97,17 +128,19 @@ export default function Leaderboard() {
           >
             🏆 المتصدرون الأبطال (فردي)
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveLeaderboardTab("groups")}
-            className={`rounded-2xl px-6 py-3 text-sm font-semibold transition ${
-              activeLeaderboardTab === "groups"
-                ? "bg-quran-600 text-white shadow-lg shadow-quran-200"
-                : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
-            }`}
-          >
-            👥 صدارة المجموعات والحلقات
-          </button>
+          {!isGuest && (
+            <button
+              type="button"
+              onClick={() => setActiveLeaderboardTab("groups")}
+              className={`rounded-2xl px-6 py-3 text-sm font-semibold transition ${
+                activeLeaderboardTab === "groups"
+                  ? "bg-quran-600 text-white shadow-lg shadow-quran-200"
+                  : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              👥 صدارة المجموعات والحلقات
+            </button>
+          )}
         </div>
 
         {error ? (
@@ -125,8 +158,8 @@ export default function Leaderboard() {
                       فرسان الأكاديمية
                     </h2>
                     <p className="text-sm text-slate-500">
-                      أفضل 10 طلاب بناءً على النقاط المكتسبة من التقييمات
-                      اليومية.
+                      أفضل 10 طلاب وافقوا على مشاركة أسمائهم وإنجازاتهم في
+                      لوحة الشرف.
                     </p>
                   </div>
                   <div className="space-y-4">
@@ -137,22 +170,49 @@ export default function Leaderboard() {
                     ) : (
                       students.map((student, index) => (
                         <div
-                          key={student.studentId}
-                          className="flex items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-5 shadow-sm"
+                          key={student.rank}
+                          className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
                         >
                           <div className="flex items-center gap-4">
                             <div className="text-3xl">
                               {medals[index] || `#${index + 1}`}
                             </div>
-                            <div>
-                              <p className="text-sm text-slate-500">الطالب</p>
-                              <p className="text-lg font-semibold text-slate-900">
-                                {student.firstName} {student.lastName}
-                              </p>
+                            <div className="flex items-center gap-3">
+                              {student.avatar ? (
+                                <img
+                                  src={student.avatar}
+                                  alt=""
+                                  className="h-12 w-12 rounded-full object-cover"
+                                />
+                              ) : (
+                                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-quran-100 font-bold text-quran-800">
+                                  {student.firstName?.charAt(0)}
+                                </span>
+                              )}
+                              <div>
+                                <p className="text-sm text-slate-500">
+                                  المركز {formatNumber(student.rank)}
+                                </p>
+                                <p className="text-lg font-semibold text-slate-900">
+                                  {student.firstName} {student.lastName}
+                                </p>
+                                {student.badges?.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {student.badges.map((badge, badgeIndex) => (
+                                      <span
+                                        key={`${student.rank}-${badgeIndex}`}
+                                        className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800"
+                                      >
+                                        {badge.icon} {badge.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="rounded-3xl bg-quran-100 px-4 py-3 text-right text-sm font-semibold text-quran-800">
-                            {formatNumber(student.totalPoints)} نقطة
+                            {formatNumber(student.points)} نقطة
                           </div>
                         </div>
                       ))

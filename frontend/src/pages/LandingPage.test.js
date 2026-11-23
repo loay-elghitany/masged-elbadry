@@ -4,7 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import LandingPage from "../pages/LandingPage";
 
 describe("LandingPage", () => {
-  it("should render the landing page with hero section", () => {
+  it("introduces Masjid Al-Badri with the Quran academy hero", () => {
     render(
       <BrowserRouter>
         <LandingPage />
@@ -12,42 +12,52 @@ describe("LandingPage", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: /quran memorization/i }),
+      screen.getByRole("heading", {
+        name: "أكاديمية مسجد البدري لتحفيظ القرآن الكريم",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("أهلاً بكم في رحاب القرآن الكريم"),
     ).toBeInTheDocument();
   });
 
-  it("should display a Quranic verse or Hadith", () => {
+  it("provides login and leaderboard calls to action", () => {
     render(
       <BrowserRouter>
         <LandingPage />
       </BrowserRouter>,
     );
 
-    const verse = screen.getByText(/بِسْمِ اللَّهِ/i);
-    expect(verse).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /تسجيل الدخول للمنصة/ }),
+    ).toHaveAttribute("href", "/login");
+    expect(
+      screen.getByRole("link", { name: "لوحة الشرف والمتصدرين" }),
+    ).toHaveAttribute("href", "/leaderboard");
   });
 
-  it("should have a login call-to-action button", () => {
-    render(
-      <BrowserRouter>
-        <LandingPage />
-      </BrowserRouter>,
-    );
-
-    const loginButton = screen.getByRole("link", { name: /login/i });
-    expect(loginButton).toBeInTheDocument();
-    expect(loginButton).toHaveAttribute("href", "/login");
-  });
-
-  it("should have responsive design with proper spacing", () => {
+  it("shows all four academy pillars and the mosque background", () => {
     const { container } = render(
       <BrowserRouter>
         <LandingPage />
       </BrowserRouter>,
     );
 
-    const main = container.querySelector("main");
-    expect(main).toBeInTheDocument();
-    expect(main).toHaveClass("min-h-screen");
+    expect(
+      screen.getByRole("heading", { name: "متابعة دقيقة للحفظ والمراجعة" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "تواصل مباشر مع ولي الأمر" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "نظام تحفيز وجوائز تفاعلي" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "دروس ومناهج مرئية" }),
+    ).toBeInTheDocument();
+    expect(container.querySelector("main")).toHaveClass("min-h-screen");
+    expect(container.querySelector("section").style.backgroundImage).toContain(
+      "/mosque-bg.jpg",
+    );
   });
 });
