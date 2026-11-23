@@ -1,0 +1,603 @@
+const Group = require("../models/group.model");
+const Assignment = require("../models/assignment.model");
+const Evaluation = require("../models/evaluation.model");
+const Badge = require("../models/badge.model");
+const LeaveRequest = require("../models/leaverequest.model");
+const User = require("../models/user.model");
+const LessonProgress = require("../models/lessonProgress.model");
+const Curriculum = require("../models/curriculum.model");
+const SystemSettings = require("../models/systemSettings.model");
+const notificationService = require("../services/notification.service");
+
+const getTeacherStudentFilter = async (teacherId) => {
+  const groupStudentIds = await Group.distinct("studentIds", {
+    teacherId,
+  });
+
+  return {
+    role: "Student",
+    $or: [{ teacherId }, { _id: { $in: groupStudentIds } }],
+  };
+};
+
+const canTeacherAccessStudent = async (teacherId, studentId) => {
+  const studentFilter = await getTeacherStudentFilter(teacherId);
+  return User.exists({ _id: studentId, ...studentFilter });
+};
+
+const getStudents = async (req, res, next) => {
+  try {
+    const students = await User.find(
+      await getTeacherStudentFilter(req.user._id),
+    )
+      .select("firstName lastName email phone points badges evaluationStreak")
+      .sort({ firstName: 1 });
+    res.json({ students });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getTeacherDashboard = async (req, res) => {
+  try {
+    const groups = await Group.find({ teacherId: req.user._id })
+      .populate("teacherId", "firstName lastName")
+      .populate("studentIds", "firstName lastName email phone role");
+
+    res.json({ groups });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً." });
+  }
+};
+
+const getTeacherStudentsWithEvaluations = async (req, res) => {
+  try {
+    const students = await User.find(
+      await getTeacherStudentFilter(req.user._id),
+    )
+      .select("firstName lastName email phone points badges evaluationStreak")
+      .sort({ firstName: 1 });
+
+    const studentsWithEvals = await Promise.all(
+      students.map(async (student) => {
+        const evaluations = await Evaluation.find({ studentId: student._id })
+          .sort({ date: -1 })
+          .populate("teacherId", "firstName lastName")
+          .populate("groupId", "name");
+
+        return {
+          ...student.toObject(),
+          evaluations,
+        };
+      }),
+    );
+
+    res.status(200).json({ success: true, students: studentsWithEvals });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً.",
+    });
+  }
+};
+
+const createAssignment = async (req, res, next) => {
+  try {
+    const {
+      student,
+      date,
+      attendanceStatus,
+      newMemorization,
+      reviewPast,
+      evaluationTag,
+      teacherNote,
+      voiceNoteUrl,
+    } = req.body;
+
+    if (!(await canTeacherAccessStudent(req.user._id, student))) {
+      return res.status(403).json({ message: "غير مصرح بهذا الطالب." });
+    }
+
+    const assignment = new Assignment({
+      student,
+      teacher: req.user._id,
+      date,
+      attendanceStatus,
+      newMemorization,
+      reviewPast,
+      evaluationTag,
+      teacherNote,
+      voiceNoteUrl,
+    });
+
+    const savedAssignment = await assignment.save();
+
+    // Notify parent
+    const studentUser = await User.findById(student);
+    const parentUser = await User.findOne({ childrenIds: student });
+    if (parentUser && parentUser.phone) {
+      const message = `New assignment for ${studentUser.firstName}: ${evaluationTag}`;
+      notificationService.sendWhatsAppMessage(parentUser.phone, message);
+    }
+
+    res.status(201).json({
+      message: "تم إنشاء التكليف بنجاح.",
+      assignment: savedAssignment,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getLeaveRequests = async (req, res, next) => {
+  try {
+    const leaveRequests = await LeaveRequest.find({
+      teacher: req.user._id,
+      status: "Pending",
+    }).populate("student parent");
+    res.json({ leaveRequests });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createEvaluation = async (req, res, next) => {
+  try {
+    const {
+      studentId,
+      groupId,
+      attendanceStatus,
+      memorizationFrom,
+      memorizationTo,
+      revisionFrom,
+      revisionTo,
+      mistakes,
+      grade,
+      notes,
+    } = req.body;
+
+    const videoQuestionsCorrect = Math.min(
+      10,
+      Math.max(0, Number(req.body.videoQuestionsCorrect || 0)),
+    );
+
+    const memorizationPagesCount =
+      parseFloat(
+        req.body.memorizationPagesCount ||
+          req.body.memorization_pages_count ||
+          0,
+      ) || 0;
+    const revisionPagesCount =
+      parseFloat(
+        req.body.revisionPagesCount || req.body.revision_pages_count || 0,
+      ) || 0;
+
+    if (!studentId) {
+      return res.status(400).json({ message: "يجب تحديد الطالب." });
+    }
+
+    if (!(await canTeacherAccessStudent(req.user._id, studentId))) {
+      return res.status(403).json({ message: "غير مصرح بهذا الطالب." });
+    }
+
+    if (groupId) {
+      const teacherGroup = await Group.exists({
+        _id: groupId,
+        teacherId: req.user._id,
+        studentIds: studentId,
+      });
+      if (!teacherGroup) {
+        return res.status(403).json({ message: "غير مصرح بهذه المجموعة." });
+      }
+    }
+
+    // Fetch dynamic settings from database
+    let settings = await SystemSettings.findOne();
+    if (!settings) {
+      settings = await SystemSettings.create({});
+    }
+
+    const parsedGrade =
+      grade !== undefined && grade !== null && String(grade).trim() !== ""
+        ? Number(grade)
+        : grade;
+    const normalizedGrade =
+      parsedGrade !== undefined && !Number.isNaN(parsedGrade)
+        ? parsedGrade
+        : grade;
+
+    let points = 0;
+    const isUnexcusedAbsence = attendanceStatus === "غائب بدون عذر";
+    const isExcusedAbsence = attendanceStatus === "غائب بعذر";
+    const isPresent = attendanceStatus === "حاضر";
+
+    if (isUnexcusedAbsence) {
+      // Unexcused absence: no earned points for the evaluation, student penalty applied later
+      points = 0;
+    } else if (isExcusedAbsence) {
+      // Excused absence: evaluation yields 0 points
+      points = 0;
+    } else if (isPresent) {
+      // New strict scoring rules
+      const parsedMemPages = Number(memorizationPagesCount) || 0;
+      const parsedRevPages = Number(revisionPagesCount) || 0;
+
+      const gradeNum = Number(normalizedGrade);
+      const gradePoints = !Number.isNaN(gradeNum) ? gradeNum * 3 : 0;
+
+      const attendancePoints = 20;
+
+      const memBonus =
+        (settings.memorizationPageBonus !== undefined
+          ? Number(settings.memorizationPageBonus)
+          : 10) * parsedMemPages;
+
+      const revBonus =
+        (settings.revisionPageBonus !== undefined
+          ? Number(settings.revisionPageBonus)
+          : 5) * parsedRevPages;
+
+      const questionPointsUnit =
+        settings.videoQuestionPoints !== undefined
+          ? Number(settings.videoQuestionPoints)
+          : 3;
+      const videoQuizPoints = isPresent
+        ? videoQuestionsCorrect * questionPointsUnit
+        : 0;
+
+      const mistakesPenalty = Number(mistakes || 0) * 1;
+
+      points =
+        gradePoints +
+        attendancePoints +
+        memBonus +
+        revBonus +
+        videoQuizPoints -
+        mistakesPenalty;
+    }
+
+    const earnedPoints = Math.max(0, Math.round(points));
+
+    const evaluation = new Evaluation({
+      teacherId: req.user._id,
+      studentId,
+      groupId: groupId || null,
+      attendance: attendanceStatus,
+      earnedPoints,
+      newMemorization: {
+        from: memorizationFrom,
+        to: memorizationTo,
+      },
+      revision: {
+        from: revisionFrom,
+        to: revisionTo,
+      },
+      memorizationPagesCount: Number(memorizationPagesCount) || 0,
+      revisionPagesCount: Number(revisionPagesCount) || 0,
+      mistakes,
+      videoQuestionsCorrect,
+      videoQuestionsPoints: isPresent
+        ? videoQuestionsCorrect *
+          (settings.videoQuestionPoints !== undefined
+            ? Number(settings.videoQuestionPoints)
+            : 3)
+        : 0,
+      grade: isPresent ? normalizedGrade : undefined,
+      notes,
+      audioNote: req.file?.path || undefined,
+    });
+
+    const savedEvaluation = await evaluation.save();
+
+    if (isUnexcusedAbsence) {
+      await User.findByIdAndUpdate(studentId, {
+        $inc: { points: -15 },
+      });
+    }
+
+    if (isPresent) {
+      const student = await User.findById(studentId).select("evaluationStreak");
+      if (student) {
+        const previousStreak = student.evaluationStreak || {
+          currentGrade: "",
+          count: 0,
+          maxStreak: 0,
+        };
+        const currentCount =
+          grade === "يحتاج مراجعة"
+            ? 0
+            : previousStreak.currentGrade === grade
+              ? previousStreak.count + 1
+              : 1;
+
+        await User.findByIdAndUpdate(studentId, {
+          $inc: { points: earnedPoints },
+          $set: {
+            evaluationStreak: {
+              currentGrade: grade,
+              count: currentCount,
+              maxStreak: Math.max(previousStreak.maxStreak || 0, currentCount),
+            },
+          },
+        });
+      }
+    }
+
+    res.status(201).json({
+      message: "تم حفظ التقييم بنجاح.",
+      evaluation: savedEvaluation,
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً." });
+  }
+};
+
+const getBadges = async (req, res) => {
+  try {
+    const badges = await Badge.find().sort({ createdAt: -1 });
+    res.json({ badges });
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً." });
+  }
+};
+
+const awardBadge = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { badgeId } = req.body;
+
+    if (!badgeId) {
+      return res.status(400).json({ message: "المعرف الخاص بالوسام مطلوب." });
+    }
+
+    if (!(await canTeacherAccessStudent(req.user._id, studentId))) {
+      return res.status(403).json({ message: "غير مصرح بهذا الطالب." });
+    }
+
+    const badge = await Badge.findById(badgeId);
+    if (!badge) {
+      return res.status(404).json({ message: "الوسام غير موجود." });
+    }
+
+    const student = await User.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ message: "الطالب غير موجود." });
+    }
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const monthlyAwards = student.badges.filter(
+      (award) =>
+        award.badgeId.toString() === badgeId && award.awardedAt >= startOfMonth,
+    ).length;
+
+    if (badge.maxPerMonth && monthlyAwards >= badge.maxPerMonth) {
+      return res.status(400).json({
+        message: `تم منح هذا الوسام ${badge.maxPerMonth} مرات هذا الشهر بالفعل.`,
+      });
+    }
+
+    student.badges.push({
+      badgeId: badge._id,
+      awardedBy: req.user._id,
+      awardedAt: new Date(),
+    });
+    student.points = (student.points || 0) + (badge.pointsReward || 0);
+    await student.save();
+
+    res.json({
+      message: "تم منح الوسام للطالب بنجاح.",
+      badge,
+      student,
+    });
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً." });
+  }
+};
+
+const getStudentLessonProgress = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId) {
+      return res.status(400).json({ message: "يجب تحديد الطالب." });
+    }
+
+    if (!(await canTeacherAccessStudent(req.user._id, studentId))) {
+      return res.status(403).json({ message: "غير مصرح بهذا الطالب." });
+    }
+
+    const student = await User.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ message: "الطالب غير موجود." });
+    }
+
+    const group = await Group.findOne({
+      teacherId: req.user._id,
+      studentIds: student._id,
+    }).populate("curriculumId");
+    let curriculum = group?.curriculumId || null;
+
+    if (!curriculum) {
+      curriculum = await Curriculum.findOne({
+        target: "student",
+        isGlobal: true,
+      }).sort({ createdAt: -1 });
+    }
+
+    if (!curriculum) {
+      return res.json({
+        studentId: student._id,
+        hasWatched: false,
+        watchPercentage: 0,
+        currentLessonIndex: 0,
+        lessonIndex: null,
+        lessonTitle: null,
+        message: "⚠️ لم يتم مشاهدة الفيديو بعد",
+      });
+    }
+
+    const currentLessonIndex = Math.max(
+      0,
+      Number(group?.currentLessonIndex ?? 0),
+    );
+
+    const lesson =
+      curriculum.lessons?.[currentLessonIndex] ||
+      curriculum.lessons?.[0] ||
+      null;
+
+    const progress = await LessonProgress.findOne({
+      studentId: student._id,
+      curriculumId: curriculum._id,
+      lessonIndex: currentLessonIndex,
+    });
+
+    const watchPercentage = progress?.watchPercentage ?? 0;
+
+    res.json({
+      studentId: student._id,
+      ...(group ? { groupId: group._id } : {}),
+      hasWatched: Boolean(progress?.hasWatched) || watchPercentage >= 75,
+      watchPercentage,
+      currentLessonIndex,
+      lessonIndex: lesson ? currentLessonIndex : null,
+      lessonTitle: lesson?.title || null,
+      message:
+        watchPercentage >= 75
+          ? `🎬 تم مشاهدة الدرس: ${watchPercentage}%`
+          : "⚠️ لم يتم مشاهدة الفيديو بعد",
+    });
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً." });
+  }
+};
+
+const getEvaluationHistory = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId) {
+      return res.status(400).json({ message: "يجب تحديد الطالب." });
+    }
+
+    if (!(await canTeacherAccessStudent(req.user._id, studentId))) {
+      return res.status(403).json({ message: "غير مصرح بهذا الطالب." });
+    }
+
+    const evaluations = await Evaluation.find({
+      studentId,
+    })
+      .sort({ date: -1 })
+      .populate("teacherId", "firstName lastName")
+      .populate("groupId", "name");
+
+    res.json({ evaluations });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً." });
+  }
+};
+
+const deleteEvaluation = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const evaluation = await Evaluation.findById(id);
+    if (!evaluation) {
+      return res.status(404).json({ message: "التقييم غير موجود." });
+    }
+
+    // Ensure the requesting teacher created this evaluation
+    if (
+      evaluation.teacherId &&
+      evaluation.teacherId.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({ message: "غير مصرح بحذف هذا التقييم." });
+    }
+
+    const student = await User.findById(evaluation.studentId);
+    if (student) {
+      if (evaluation.attendance === "غائب بدون عذر") {
+        student.points = (student.points || 0) + 15;
+      } else if (evaluation.attendance === "حاضر") {
+        student.points = (student.points || 0) - (evaluation.earnedPoints || 0);
+      }
+
+      await student.save();
+    }
+
+    await evaluation.deleteOne();
+
+    res.json({ message: "تم حذف التقييم وتحديث رصيد نقاط الطالب بنجاح." });
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: "حدث خطأ غير متوقع في الخادم، يرجى المحاولة لاحقاً." });
+  }
+};
+
+const updateLeaveRequestStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!["Approved", "Rejected"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "عذراً، الحالة المختارة غير صحيحة.",
+      });
+    }
+
+    const leaveRequest = await LeaveRequest.findOneAndUpdate(
+      { _id: id, teacher: req.user._id },
+      { status },
+      { new: true },
+    );
+    if (!leaveRequest) {
+      return res.status(404).json({
+        success: false,
+        message: "عذراً، طلب الإجازة غير موجود.",
+      });
+    }
+
+    res.json({
+      message: "تم تحديث طلب الإجازة بنجاح.",
+      leaveRequest,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  getStudents,
+  getTeacherDashboard,
+  getTeacherStudentsWithEvaluations,
+  getBadges,
+  awardBadge,
+  createAssignment,
+  createEvaluation,
+  deleteEvaluation,
+  getStudentLessonProgress,
+  getEvaluationHistory,
+  getLeaveRequests,
+  updateLeaveRequestStatus,
+};

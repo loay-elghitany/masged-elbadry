@@ -1,0 +1,377 @@
+const request = require("supertest");
+const mongoose = require("mongoose");
+const { MongoMemoryServer } = require("mongodb-memory-server");
+const jwt = require("jsonwebtoken");
+const app = require("../src/app");
+const User = require("../src/models/user.model");
+const Group = require("../src/models/group.model");
+const Curriculum = require("../src/models/curriculum.model");
+const LessonProgress = require("../src/models/lessonProgress.model");
+const Assignment = require("../src/models/assignment.model");
+const ContentQuiz = require("../src/models/contentquiz.model");
+const Reward = require("../src/models/reward.model");
+const Redemption = require("../src/models/redemption.model");
+
+jest.mock("../src/services/quran.service");
+
+let mongoServer;
+let studentToken;
+let student;
+let teacher;
+let quiz;
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  await mongoose.connect(mongoServer.getUri(), {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  });
+});
+
+beforeEach(async () => {
+  teacher = new User({
+    firstName: "Teacher",
+    lastName: "User",
+    email: "teacher@example.com",
+    password: "teacherpass123",
+    role: "Teacher",
+  });
+  await teacher.save();
+  student = new User({
+    firstName: "Student",
+    lastName: "User",
+    email: "student@example.com",
+    password: "studentpass123",
+    role: "Student",
+    teacherId: teacher._id,
+    assignedGroups: [],
+  });
+  await student.save();
+
+  const group = new Group({
+    name: "Test Group",
+    teacherId: teacher._id,
+    studentIds: [student._id],
+  });
+  await group.save();
+
+  // assign group back to student
+  student.assignedGroups = [group._id];
+  await student.save();
+
+  studentToken = jwt.sign(
+    { id: student._id, role: student.role },
+    process.env.JWT_SECRET || "defaultsecret",
+    { expiresIn: "24h" },
+  );
+
+  quiz = new ContentQuiz({
+    videoTitle: "Test Quiz",
+    youtubeUrl: "https://www.youtube.com/watch?v=test123",
+    questions: [
+      {
+        questionText: "What is the first Surah?",
+        options: ["Al-Fatiha", "Al-Baqarah", "Al-Imran"],
+        correctAnswer: "Al-Fatiha",
+      },
+      {
+        questionText: "How many surahs in the Quran?",
+        options: ["112", "114", "120"],
+        correctAnswer: "114",
+      },
+    ],
+  });
+  await quiz.save();
+});
+
+afterEach(async () => {
+  const collections = Object.keys(mongoose.connection.collections);
+  for (const collectionName of collections) {
+    await mongoose.connection.collections[collectionName].deleteMany({});
+  }
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongoServer.stop();
+});
+
+describe("GET /api/student/my-assignments", () => {
+  it("should fetch all assignments for the student", async () => {
+    const assignment = new Assignment({
+      student: student._id,
+      teacher: teacher._id,
+      date: new Date(),
+      attendanceStatus: "Present",
+      newMemorization: { startVerse: 1, endVerse: 5, surahName: "Al-Fatiha" },
+      reviewPast: { startVerse: 6, endVerse: 10, surahName: "Al-Baqarah" },
+      evaluationTag: "Excellent",
+    });
+    await assignment.save();
+
+    const response = await request(app)
+      .get("/api/student/my-assignments")
+      .set("Authorization", `Bearer ${studentToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.assignments).toHaveLength(1);
+    expect(response.body.assignments[0].evaluationTag).toBe("Excellent");
+  });
+});
+
+describe("POST /api/student/redeem", () => {
+  it("should prevent concurrent reward requests from spending the same points", async () => {
+    student.points = 100;
+    await student.save();
+    const reward = await Reward.create({
+      name: "Test reward",
+      pointsRequired: 80,
+      quantity: 2,
+    });
+
+    const makeRequest = () =>
+      request(app)
+        .post("/api/student/redeem")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ rewardId: reward._id.toString() });
+
+    const responses = await Promise.all([makeRequest(), makeRequest()]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      201,
+      400,
+    ]);
+    expect((await User.findById(student._id)).points).toBe(20);
+    expect(await Redemption.countDocuments({ studentId: student._id })).toBe(1);
+    expect((await Reward.findById(reward._id)).quantity).toBe(1);
+  });
+
+  it("should restore points and inventory only once when a redemption is rejected", async () => {
+    student.points = 100;
+    await student.save();
+    const reward = await Reward.create({
+      name: "Test reward",
+      pointsRequired: 80,
+      quantity: 2,
+    });
+    const redemptionResponse = await request(app)
+      .post("/api/student/redeem")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({ rewardId: reward._id.toString() });
+    const admin = await User.create({
+      firstName: "Admin",
+      lastName: "User",
+      email: "redemption-admin@example.com",
+      password: "adminpass123",
+      role: "SuperAdmin",
+    });
+    const adminToken = jwt.sign(
+      { id: admin._id, role: admin.role },
+      process.env.JWT_SECRET || "defaultsecret",
+    );
+
+    const rejectRequest = () =>
+      request(app)
+        .put(`/api/admin/redemptions/${redemptionResponse.body.redemption._id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ status: "rejected" });
+    const firstResponse = await rejectRequest();
+    const duplicateResponse = await rejectRequest();
+
+    expect(firstResponse.status).toBe(200);
+    expect(duplicateResponse.status).toBe(409);
+    expect((await User.findById(student._id)).points).toBe(100);
+    expect((await Reward.findById(reward._id)).quantity).toBe(2);
+  });
+});
+
+describe("GET /api/student/my-assignments/:id/read", () => {
+  it("should fetch assignment with Quranic text from mocked service", async () => {
+    const { fetchVerses } = require("../src/services/quran.service");
+    fetchVerses.mockReturnValue([
+      { verseNumber: 1, text: "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ" },
+      { verseNumber: 2, text: "الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ" },
+    ]);
+
+    const assignment = new Assignment({
+      student: student._id,
+      teacher: teacher._id,
+      date: new Date(),
+      attendanceStatus: "Present",
+      newMemorization: { startVerse: 1, endVerse: 2, surahName: "Al-Fatiha" },
+      reviewPast: { startVerse: 3, endVerse: 4, surahName: "Al-Baqarah" },
+      evaluationTag: "Good",
+    });
+    await assignment.save();
+
+    const response = await request(app)
+      .get(`/api/student/my-assignments/${assignment._id}/read`)
+      .set("Authorization", `Bearer ${studentToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.assignment.newMemorization.verses).toBeDefined();
+    expect(response.body.assignment.reviewPast.verses).toBeDefined();
+    expect(fetchVerses).toHaveBeenCalledWith("Al-Fatiha", 1, 2);
+  });
+});
+
+describe("GET /api/student/quizzes", () => {
+  it("should fetch quizzes without correctAnswer field", async () => {
+    const response = await request(app)
+      .get("/api/student/quizzes")
+      .set("Authorization", `Bearer ${studentToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.quizzes).toHaveLength(1);
+    expect(response.body.quizzes[0].questions[0]).not.toHaveProperty(
+      "correctAnswer",
+    );
+    expect(response.body.quizzes[0].questions[0]).toHaveProperty(
+      "questionText",
+    );
+  });
+});
+
+describe("GET /api/student/curriculum/student-lessons", () => {
+  it("should return the assigned curriculum and lesson progress", async () => {
+    const curriculum = new Curriculum({
+      name: "منهج الأطفال",
+      target: "student",
+      lessons: [
+        { title: "الدرس الأول", videoUrl: "https://youtu.be/abc123xyz12" },
+        { title: "الدرس الثاني", videoUrl: "https://youtu.be/def456uvw34" },
+      ],
+    });
+    await curriculum.save();
+
+    const group = new Group({
+      name: "Test Group",
+      teacherId: teacher._id,
+      studentIds: [student._id],
+      curriculumId: curriculum._id,
+      currentLessonIndex: 0,
+    });
+    await group.save();
+
+    student.assignedGroups = [group._id];
+    await student.save();
+
+    await LessonProgress.create({
+      studentId: student._id,
+      curriculumId: curriculum._id,
+      lessonIndex: 0,
+      watchPercentage: 80,
+      hasWatched: true,
+    });
+
+    const response = await request(app)
+      .get("/api/student/curriculum/student-lessons")
+      .set("Authorization", `Bearer ${studentToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.curriculum).toBeTruthy();
+    expect(response.body.currentLessonIndex).toBe(0);
+    expect(response.body.progressList).toHaveLength(1);
+    expect(response.body.progressList[0].lessonIndex).toBe(0);
+  });
+
+  it("should return a global curriculum when the student has no assigned group curriculum", async () => {
+    const curriculum = new Curriculum({
+      name: "منهج عام",
+      target: "student",
+      isGlobal: true,
+      lessons: [
+        { title: "درس عام أول", videoUrl: "https://youtu.be/global123abc1" },
+      ],
+    });
+    await curriculum.save();
+
+    const response = await request(app)
+      .get("/api/student/curriculum/student-lessons")
+      .set("Authorization", `Bearer ${studentToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.curriculum).toBeTruthy();
+    expect(response.body.curriculum.name).toBe("منهج عام");
+    expect(response.body.curriculum.isGlobal).toBe(true);
+    expect(response.body.progressList).toEqual([]);
+  });
+});
+
+describe("POST /api/student/curriculum/student-lessons/track", () => {
+  it("should upsert lesson progress and keep the best watched percentage", async () => {
+    const curriculum = new Curriculum({
+      name: "منهج الأطفال",
+      target: "student",
+      lessons: [
+        { title: "درس تجريبي", videoUrl: "https://youtu.be/test123abc4" },
+      ],
+    });
+    await curriculum.save();
+
+    const group = new Group({
+      name: "Test Group",
+      teacherId: teacher._id,
+      studentIds: [student._id],
+      curriculumId: curriculum._id,
+      currentLessonIndex: 0,
+    });
+    await group.save();
+
+    student.assignedGroups = [group._id];
+    await student.save();
+
+    const firstTrack = await request(app)
+      .post("/api/student/curriculum/student-lessons/track")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({
+        curriculumId: curriculum._id.toString(),
+        lessonIndex: 0,
+        percentage: 60,
+      });
+
+    expect(firstTrack.status).toBe(200);
+    expect(firstTrack.body.progress.watchPercentage).toBe(60);
+    expect(firstTrack.body.progress.hasWatched).toBe(false);
+
+    const secondTrack = await request(app)
+      .post("/api/student/curriculum/student-lessons/track")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({
+        curriculumId: curriculum._id.toString(),
+        lessonIndex: 0,
+        percentage: 90,
+      });
+
+    expect(secondTrack.status).toBe(200);
+    expect(secondTrack.body.progress.watchPercentage).toBe(90);
+    expect(secondTrack.body.progress.hasWatched).toBe(true);
+  });
+});
+
+describe("POST /api/student/quizzes/:id/submit", () => {
+  it("should calculate and return quiz score", async () => {
+    const response = await request(app)
+      .post(`/api/student/quizzes/${quiz._id}/submit`)
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({
+        answers: ["Al-Fatiha", "114"],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty("score");
+    expect(response.body.score).toBe(2); // Both answers correct
+  });
+
+  it("should calculate partial score for wrong answers", async () => {
+    const response = await request(app)
+      .post(`/api/student/quizzes/${quiz._id}/submit`)
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({
+        answers: ["Al-Baqarah", "114"], // First is wrong
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.score).toBe(1);
+  });
+});
