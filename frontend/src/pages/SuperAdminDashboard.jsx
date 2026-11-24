@@ -44,6 +44,18 @@ export default function SuperAdminDashboard() {
   const [isExportingTopStudents, setIsExportingTopStudents] = useState(false);
   const [lessonWatchTracker, setLessonWatchTracker] = useState([]);
   const [activeTab, setActiveTab] = useState("teachers");
+  const [sardStudents, setSardStudents] = useState([]);
+  const [sardSearch, setSardSearch] = useState("");
+  const [sardSettings, setSardSettings] = useState({
+    maxScore: 100,
+    hesitationPenalty: 0,
+    alertPenalty: 3,
+    correctionPenalty: 6,
+  });
+  const [sardSettingsStatus, setSardSettingsStatus] = useState("");
+  const [sardReceptionSearch, setSardReceptionSearch] = useState("");
+  const [sardCommitteeDrafts, setSardCommitteeDrafts] = useState({});
+  const [sardStatus, setSardStatus] = useState("");
 
   const navigationGroups = [
     {
@@ -64,6 +76,10 @@ export default function SuperAdminDashboard() {
         },
         { key: "groups", label: "المجموعات", icon: "👥" },
       ],
+    },
+    {
+      label: "المسابقات",
+      items: [{ key: "sard", label: "مسابقة السرد (جزء عمّ)", icon: "📖" }],
     },
     {
       label: "المحتوى والتحفيز",
@@ -226,6 +242,33 @@ export default function SuperAdminDashboard() {
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== "sard") return undefined;
+    let active = true;
+    Promise.all([
+      api.get("/admin/sard/settings"),
+      api.get("/admin/sard/leaderboard"),
+    ])
+      .then(([settingsResponse, leaderboardResponse]) => {
+        if (!active) return;
+        setSardSettings((current) => ({
+          ...current,
+          ...settingsResponse.data.settings,
+        }));
+        setSardStudents(leaderboardResponse.data.students || []);
+      })
+      .catch((error) => {
+        if (active) {
+          setSardStatus(
+            getApiErrorMessage(error, "تعذر تحميل بيانات مسابقة السرد."),
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeTab]);
+
   // Fetch gamification settings
   useEffect(() => {
     if (activeTab !== "settings") return undefined;
@@ -281,6 +324,115 @@ export default function SuperAdminDashboard() {
       );
     }
   };
+
+  const handleSardSettingsChange = (field, value) => {
+    setSardSettings((current) => ({ ...current, [field]: Number(value) }));
+  };
+
+  const handleSaveSardSettings = async (event) => {
+    event.preventDefault();
+    setSardSettingsStatus("");
+    try {
+      const { data } = await api.put("/admin/sard/settings", sardSettings);
+      setSardSettings(data.settings);
+      setSardSettingsStatus("تم حفظ إعدادات تحدي السرد.");
+    } catch (error) {
+      setSardSettingsStatus(
+        getApiErrorMessage(error, "تعذر حفظ إعدادات التحدي."),
+      );
+    }
+  };
+
+  const handleAssignSardCommittee = async (
+    student,
+    assignedCommittee,
+    teacherId,
+  ) => {
+    setSardStatus("");
+    try {
+      await api.put(
+        `/admin/sard/students/${student._id}/committee`,
+        { assignedCommittee, teacherId },
+      );
+      const teacher = teachers.find((item) => item._id === teacherId);
+      setSardStudents((current) =>
+        current.map((item) =>
+          item._id === student._id
+            ? {
+                ...item,
+                assignedCommittee,
+                teacherId: teacher
+                  ? {
+                      _id: teacher._id,
+                      firstName: teacher.firstName,
+                      lastName: teacher.lastName,
+                    }
+                  : null,
+              }
+            : item,
+        ),
+      );
+      setSardCommitteeDrafts((current) => ({
+        ...current,
+        [student._id]: assignedCommittee,
+      }));
+      setSardStatus(`تم تحديث تعيين ${student.competitionCode}.`);
+    } catch (error) {
+      setSardStatus(
+        getApiErrorMessage(error, "تعذر تحديث لجنة المتسابق."),
+      );
+    }
+  };
+
+  const exportSardCsv = () => {
+    const header = ["Competition Code", "Student", "Parent Phone", "Talent", "Committee", "Teacher", "Score", "Maximum"];
+    const rows = filteredSardStudents.map((student) => [
+      student.competitionCode,
+      `${student.firstName} ${student.lastName}`,
+      student.parentPhone || "",
+      student.talent || "",
+      student.assignedCommittee || "",
+      student.teacherId
+        ? `${student.teacherId.firstName} ${student.teacherId.lastName}`
+        : "",
+      student.latestEvaluation?.finalScore ?? "",
+      student.latestEvaluation?.maxScore ?? sardSettings.maxScore,
+    ]);
+    const csv = [header, ...rows]
+      .map((row) =>
+        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\r\n");
+    const url = URL.createObjectURL(
+      new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "juz-amma-sard-leaderboard.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const filteredSardStudents = sardStudents.filter((student) =>
+    `${student.competitionCode} ${student.firstName} ${student.lastName}`
+      .toLowerCase()
+      .includes(sardSearch.trim().toLowerCase()),
+  ).sort(
+    (first, second) =>
+      (second.latestEvaluation?.finalScore || 0) /
+        (second.latestEvaluation?.maxScore || sardSettings.maxScore) -
+      (first.latestEvaluation?.finalScore || 0) /
+        (first.latestEvaluation?.maxScore || sardSettings.maxScore),
+  );
+  const filteredReceptionStudents = sardReceptionSearch.trim()
+    ? sardStudents
+        .filter((student) =>
+          `${student.competitionCode} ${student.firstName} ${student.lastName}`
+            .toLowerCase()
+            .includes(sardReceptionSearch.trim().toLowerCase()),
+        )
+        .slice(0, 5)
+    : [];
 
   const getArabicRole = (role) => {
     switch (role) {
@@ -2766,6 +2918,228 @@ export default function SuperAdminDashboard() {
                     </table>
                   </div>
                 )}
+              </section>
+            )}
+
+            {activeTab === "sard" && (
+              <section className="space-y-6">
+                <form
+                  onSubmit={handleSaveSardSettings}
+                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
+                >
+                  <div className="mb-6">
+                    <h2 className="text-2xl font-bold text-slate-900">
+                      إعدادات تقييم تحدي سرد جزء عمّ
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-500">
+                      تحفظ القيم الجديدة كإعدادات افتراضية للتقييمات اللاحقة.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      ["maxScore", "الدرجة النهائية للتسميع"],
+                      ["hesitationPenalty", "خصم التردد الذاتي"],
+                      ["alertPenalty", "خصم تنبيه المعلم"],
+                      ["correctionPenalty", "خصم فتح / تصحيح المعلم"],
+                    ].map(([field, label]) => (
+                      <label key={field} className="space-y-2 text-sm font-semibold text-slate-700">
+                        {label}
+                        <input
+                          type="number"
+                          min={field === "maxScore" ? "1" : "0"}
+                          step="any"
+                          required
+                          value={sardSettings[field]}
+                          onChange={(event) =>
+                            handleSardSettingsChange(field, event.target.value)
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-4 py-3"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-5 flex flex-wrap items-center gap-4">
+                    <button type="submit" className="rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white hover:bg-emerald-800">
+                      حفظ إعدادات المسابقة
+                    </button>
+                    {sardSettingsStatus && <p role="status" className="text-sm text-emerald-800">{sardSettingsStatus}</p>}
+                  </div>
+                </form>
+
+                <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                  <div className="mb-5">
+                    <h2 className="text-xl font-bold text-slate-900">
+                      استقبال المتسابق وتحديد اللجنة
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      ابحث عن الكود أو الاسم، ثم عيّن المعلم مباشرة أو احفظ اسم لجنة مخصص.
+                    </p>
+                  </div>
+                  <label className="block space-y-2 text-sm font-bold text-slate-700">
+                    البحث السريع عن متسابق
+                    <input
+                      type="search"
+                      autoComplete="off"
+                      value={sardReceptionSearch}
+                      onChange={(event) => setSardReceptionSearch(event.target.value)}
+                      placeholder="ابحث بالكود مثل 105 أو باسم الطالب..."
+                      className="w-full rounded-2xl border-2 border-emerald-300 bg-emerald-50/40 px-5 py-4 text-base shadow-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                    />
+                  </label>
+                  <div className="mt-4 space-y-3">
+                    {filteredReceptionStudents.map((student) => (
+                      <article
+                        key={student._id}
+                        className="grid gap-4 rounded-2xl border border-slate-200 p-4 lg:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1fr)_minmax(14rem,1fr)] lg:items-center"
+                      >
+                        <div>
+                          <p className="text-xs font-bold text-emerald-800">
+                            {student.competitionCode}
+                          </p>
+                          <p className="mt-1 font-extrabold text-slate-900">
+                            {student.firstName} {student.lastName}
+                          </p>
+                          {student.assignedCommittee && (
+                            <p className="mt-1 text-xs text-slate-500">
+                              اللجنة الحالية: {student.assignedCommittee}
+                            </p>
+                          )}
+                        </div>
+                        <label className="space-y-1 text-xs font-bold text-slate-600">
+                          تعيين سريع لمعلم
+                          <select
+                            value={student.teacherId?._id || ""}
+                            onChange={(event) => {
+                              const teacherId = event.target.value;
+                              const teacher = teachers.find(
+                                (item) => item._id === teacherId,
+                              );
+                              const assignedCommittee = teacher
+                                ? `${teacher.firstName} ${teacher.lastName}`
+                                : student.assignedCommittee || "";
+                              handleAssignSardCommittee(
+                                student,
+                                assignedCommittee,
+                                teacherId,
+                              );
+                            }}
+                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm"
+                          >
+                            <option value="">بدون معلم معين</option>
+                            {teachers.map((teacher) => (
+                              <option key={teacher._id} value={teacher._id}>
+                                {teacher.firstName} {teacher.lastName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="flex items-end gap-2">
+                          <label className="min-w-0 flex-1 space-y-1 text-xs font-bold text-slate-600">
+                            لجنة / قاعة مخصصة
+                            <input
+                              value={
+                                sardCommitteeDrafts[student._id] ??
+                                student.assignedCommittee ??
+                                ""
+                              }
+                              onChange={(event) =>
+                                setSardCommitteeDrafts((current) => ({
+                                  ...current,
+                                  [student._id]: event.target.value,
+                                }))
+                              }
+                              placeholder="اكتب اسم اللجنة"
+                              className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleAssignSardCommittee(
+                                student,
+                                sardCommitteeDrafts[student._id] ??
+                                  student.assignedCommittee ??
+                                  "",
+                                student.teacherId?._id || "",
+                              )
+                            }
+                            className="shrink-0 rounded-xl bg-amber-500 px-3 py-3 text-sm font-bold text-white hover:bg-amber-600"
+                          >
+                            حفظ اللجنة
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                    {sardReceptionSearch.trim() &&
+                      filteredReceptionStudents.length === 0 && (
+                        <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
+                          لا يوجد متسابق مطابق لهذا الكود أو الاسم.
+                        </p>
+                      )}
+                    {!sardReceptionSearch.trim() && (
+                      <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
+                        ابدأ بكتابة كود المسابقة أو اسم الطالب لعرض النتائج فوراً.
+                      </p>
+                    )}
+                  </div>
+                  {sardStatus && (
+                    <p role="status" className="mt-4 text-sm font-semibold text-slate-700">
+                      {sardStatus}
+                    </p>
+                  )}
+                </section>
+
+                <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                  <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-slate-900">لوحة ترتيب المتسابقين</h2>
+                      <p className="mt-1 text-sm text-slate-500">{filteredSardStudents.length} متسابق</p>
+                    </div>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        type="search"
+                        value={sardSearch}
+                        onChange={(event) => setSardSearch(event.target.value)}
+                        placeholder="ابحث بكود BDR-105 أو اسم الطالب"
+                        className="rounded-xl border border-slate-300 px-4 py-3 text-sm"
+                      />
+                      <button type="button" onClick={exportSardCsv} className="rounded-xl border border-emerald-700 px-4 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50">تصدير CSV</button>
+                      <button type="button" onClick={() => window.print()} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold hover:bg-slate-50">طباعة</button>
+                    </div>
+                  </div>
+                  {sardStatus && <p role="status" className="mb-4 text-sm text-slate-600">{sardStatus}</p>}
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[900px] text-right text-sm">
+                      <thead className="bg-slate-50 text-slate-600">
+                        <tr>
+                          {["الكود", "اسم الطالب", "هاتف ولي الأمر", "الموهبة", "اللجنة", "المعلم", "آخر نتيجة"].map((heading) => (
+                            <th key={heading} className="px-4 py-3 font-bold">{heading}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredSardStudents.map((student) => (
+                          <tr key={student._id}>
+                            <td className="px-4 py-3 font-extrabold text-emerald-800">{student.competitionCode}</td>
+                            <td className="px-4 py-3">{student.firstName} {student.lastName}</td>
+                            <td className="px-4 py-3" dir="ltr">{student.parentPhone || "—"}</td>
+                            <td className="px-4 py-3">{student.talent || "—"}</td>
+                            <td className="px-4 py-3">{student.assignedCommittee || "غير محددة"}</td>
+                            <td className="px-4 py-3">{student.teacherId ? `${student.teacherId.firstName} ${student.teacherId.lastName}` : "—"}</td>
+                            <td className="px-4 py-3 font-bold">
+                              {student.latestEvaluation
+                                ? `${student.latestEvaluation.finalScore} / ${student.latestEvaluation.maxScore}`
+                                : "لم يُقيّم بعد"}
+                            </td>
+                          </tr>
+                        ))}
+                        {!filteredSardStudents.length && (
+                          <tr><td colSpan="7" className="px-4 py-8 text-center text-slate-500">لا يوجد متسابقون مطابقون للبحث.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               </section>
             )}
 

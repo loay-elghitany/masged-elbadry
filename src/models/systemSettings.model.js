@@ -29,6 +29,12 @@ const SystemSettingsSchema = new Schema(
       default: 3,
       min: 0,
     },
+    sardSettings: {
+      maxScore: { type: Number, default: 100, min: 1 },
+      hesitationPenalty: { type: Number, default: 0, min: 0 },
+      alertPenalty: { type: Number, default: 3, min: 0 },
+      correctionPenalty: { type: Number, default: 6, min: 0 },
+    },
   },
   { timestamps: true },
 );

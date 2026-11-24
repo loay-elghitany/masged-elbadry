@@ -5,13 +5,14 @@ const Redemption = require("../models/redemption.model");
 const Challenge = require("../models/challenge.model");
 const Assignment = require("../models/assignment.model");
 const ContentQuiz = require("../models/contentquiz.model");
+const SardEvaluation = require("../models/sardEvaluation.model");
 const { fetchVerses } = require("../services/quran.service");
 
 const getStudentDashboard = async (req, res) => {
   try {
     const student = await User.findById(req.user._id)
       .select(
-        "firstName lastName email phone role teacherId avatar points badges evaluationStreak publicLeaderboardOptIn",
+        "firstName lastName email phone role teacherId avatar points badges evaluationStreak publicLeaderboardOptIn competitionCode assignedCommittee",
       )
       .populate("teacherId", "firstName lastName email phone")
       .populate({
@@ -33,6 +34,11 @@ const getStudentDashboard = async (req, res) => {
     const evaluations = await Evaluation.find({ studentId: student._id })
       .sort({ date: -1 })
       .populate("groupId", "name")
+      .populate("teacherId", "firstName lastName");
+    const sardEvaluation = await SardEvaluation.findOne({
+      studentId: student._id,
+    })
+      .sort({ createdAt: -1 })
       .populate("teacherId", "firstName lastName");
 
     const badgePoints = student.points || 0;
@@ -60,6 +66,7 @@ const getStudentDashboard = async (req, res) => {
       teacher: student.teacherId,
       group,
       evaluations,
+      sardEvaluation,
       points: {
         totalPoints,
         availablePoints,

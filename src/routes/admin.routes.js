@@ -83,6 +83,12 @@ const {
   parentUpdateSchema,
 } = require("../validation/schemas/admin.schema");
 const { cloudinaryPdfStorage } = require("../config/cloudinary");
+const {
+  getSardSettings,
+  updateSardSettings,
+  getSardLeaderboard,
+  assignSardCommittee,
+} = require("../controllers/sard.controller");
 
 const pdfUpload = multer({
   storage: cloudinaryPdfStorage,
@@ -102,6 +108,10 @@ router.use(authMiddleware);
 router.use(roleMiddleware("SuperAdmin"));
 
 router.get("/users", getUsers);
+router.get("/sard/settings", getSardSettings);
+router.put("/sard/settings", updateSardSettings);
+router.get("/sard/leaderboard", getSardLeaderboard);
+router.put("/sard/students/:studentId/committee", assignSardCommittee);
 router.get("/groups", getGroups);
 router.get("/evaluations", getAdminEvaluations);
 router.get("/export/students-credentials", exportStudentCredentials);

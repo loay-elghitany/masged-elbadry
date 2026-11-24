@@ -128,6 +128,12 @@ export default function LandingPage() {
                 <span aria-hidden="true">←</span>
               </Link>
               <Link
+                to="/sard-register"
+                className="inline-flex min-h-14 items-center justify-center rounded-xl bg-amber-300 px-7 py-3.5 font-bold text-emerald-950 shadow-lg transition hover:-translate-y-0.5 hover:bg-amber-200"
+              >
+                تحدي سرد جزء عمّ - سجل الآن
+              </Link>
+              <Link
                 to="/leaderboard"
                 className="inline-flex min-h-14 items-center justify-center rounded-xl border border-white/30 bg-white/10 px-7 py-3.5 font-semibold text-white backdrop-blur-md transition hover:border-white/55 hover:bg-white/15"
               >

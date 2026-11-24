@@ -1,5 +1,11 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import SuperAdminDashboard from "./SuperAdminDashboard";
 import api from "../api/axios";
@@ -298,6 +304,90 @@ test("sends core profile fields when editing a student", async () => {
         groupId: "",
         parentId: "",
       }),
+    );
+  });
+});
+
+test("searches reception contestants instantly and assigns a teacher in one selection", async () => {
+  api.get.mockImplementation((url) => {
+    if (url === "/admin/users") {
+      return Promise.resolve({
+        data: {
+          users: [
+            {
+              _id: "teacher-1",
+              firstName: "Teacher",
+              lastName: "A",
+              role: "Teacher",
+            },
+          ],
+        },
+      });
+    }
+    if (url === "/admin/groups") {
+      return Promise.resolve({ data: { groups: [] } });
+    }
+    if (url === "/admin/sard/settings") {
+      return Promise.resolve({
+        data: {
+          settings: {
+            maxScore: 100,
+            hesitationPenalty: 0,
+            alertPenalty: 3,
+            correctionPenalty: 6,
+          },
+        },
+      });
+    }
+    if (url === "/admin/sard/leaderboard") {
+      return Promise.resolve({
+        data: {
+          students: [
+            {
+              _id: "contestant-1",
+              firstName: "Yusuf",
+              lastName: "Ahmed",
+              competitionCode: "BDR-105",
+              assignedCommittee: "",
+              teacherId: null,
+              latestEvaluation: null,
+            },
+          ],
+        },
+      });
+    }
+    return Promise.resolve({ data: {} });
+  });
+
+  render(
+    <MemoryRouter>
+      <SuperAdminDashboard />
+    </MemoryRouter>,
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "مسابقة السرد (جزء عمّ)" }),
+  );
+
+  const search = await screen.findByPlaceholderText(
+    "ابحث بالكود مثل 105 أو باسم الطالب...",
+  );
+  fireEvent.change(search, { target: { value: "105" } });
+  await screen.findAllByText("Yusuf Ahmed");
+  const contestantRow = search.closest("section").querySelector("article");
+  expect(contestantRow).not.toBeNull();
+
+  fireEvent.change(
+    within(contestantRow).getByLabelText("تعيين سريع لمعلم"),
+    { target: { value: "teacher-1" } },
+  );
+
+  await waitFor(() => {
+    expect(api.put).toHaveBeenCalledWith(
+      "/admin/sard/students/contestant-1/committee",
+      {
+        assignedCommittee: "Teacher A",
+        teacherId: "teacher-1",
+      },
     );
   });
 });

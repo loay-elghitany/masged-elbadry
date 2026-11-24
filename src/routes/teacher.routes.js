@@ -39,6 +39,11 @@ const {
 } = require("../validation/schemas/teacher.schema");
 const { idParamsSchema } = require("../validation/schemas/admin.schema");
 const { cloudinaryAudioStorage } = require("../config/cloudinary");
+const {
+  getSardSettings,
+  getTeacherSardStudents,
+  createSardEvaluation,
+} = require("../controllers/sard.controller");
 
 const upload = multer({
   storage: cloudinaryAudioStorage,
@@ -65,6 +70,9 @@ router.use(authMiddleware);
 router.use(roleMiddleware("Teacher"));
 
 router.get("/dashboard", getTeacherDashboard);
+router.get("/sard/settings", getSardSettings);
+router.get("/sard/students", getTeacherSardStudents);
+router.post("/sard-evaluations", createSardEvaluation);
 router.get("/students-with-evaluations", getTeacherStudentsWithEvaluations);
 router.get("/students", getStudents);
 router.get("/students/:studentId/lesson-progress", getStudentLessonProgress);

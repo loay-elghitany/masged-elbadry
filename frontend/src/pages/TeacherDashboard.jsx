@@ -3,6 +3,8 @@ import api from "../api/axios";
 import { getApiErrorMessage } from "../utils/apiError";
 import Navbar from "../components/Navbar";
 import AnnouncementsBanner from "../components/AnnouncementsBanner";
+import juzAmmaSurahs from "../data/juzAmmaSurahs";
+import { getSardMistakePresentation } from "../utils/sardMistakes";
 
 const parseLocalizedFloat = (value) => {
   if (!value) return "";
@@ -126,6 +128,28 @@ export default function TeacherDashboard() {
   const [selectedBadge, setSelectedBadge] = useState("");
   const [selectedBadgeStudent, setSelectedBadgeStudent] = useState(null);
   const [awardMessage, setAwardMessage] = useState("");
+  const [sardMode, setSardMode] = useState(false);
+  const [sardSettings, setSardSettings] = useState({
+    maxScore: 100,
+    hesitationPenalty: 0,
+    alertPenalty: 3,
+    correctionPenalty: 6,
+  });
+  const [sardStudents, setSardStudents] = useState([]);
+  const [sardSearch, setSardSearch] = useState("");
+  const [sardStudentId, setSardStudentId] = useState("");
+  const [sardLoading, setSardLoading] = useState(false);
+  const [sardError, setSardError] = useState("");
+  const [sardMessage, setSardMessage] = useState("");
+  const [sardCounts, setSardCounts] = useState({
+    hesitationCount: 0,
+    alertCount: 0,
+    correctionCount: 0,
+  });
+  const [sardMistakes, setSardMistakes] = useState([]);
+  const [lastActionType, setLastActionType] = useState("alert");
+  const [selectedSurah, setSelectedSurah] = useState("");
+  const [sardNotes, setSardNotes] = useState("");
 
   const isAttendanceLocked = ["غائب بعذر", "غائب بدون عذر"].includes(
     evaluation.attendanceStatus,
@@ -164,6 +188,35 @@ export default function TeacherDashboard() {
 
     fetchStudents();
   }, []);
+
+  useEffect(() => {
+    if (!sardMode) return undefined;
+    let active = true;
+    setSardLoading(true);
+    setSardError("");
+    Promise.all([
+      api.get("/teacher/sard/settings"),
+      api.get("/teacher/sard/students"),
+    ])
+      .then(([settingsResponse, studentsResponse]) => {
+        if (!active) return;
+        setSardSettings(settingsResponse.data.settings || sardSettings);
+        setSardStudents(studentsResponse.data.students || []);
+      })
+      .catch((error) => {
+        if (active) {
+          setSardError(
+            getApiErrorMessage(error, "تعذر تحميل بيانات تقييم السرد."),
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setSardLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [sardMode]);
 
   const fetchStudentLessonProgress = async (studentId) => {
     if (!studentId) return null;
@@ -591,6 +644,106 @@ export default function TeacherDashboard() {
       .includes(searchValue);
   });
 
+  const filteredSardStudents = sardStudents.filter((student) =>
+    `${student.competitionCode} ${student.firstName} ${student.lastName}`
+      .toLowerCase()
+      .includes(sardSearch.trim().toLowerCase()),
+  );
+  const sardScore = Math.max(
+    0,
+    sardSettings.maxScore -
+      sardCounts.hesitationCount * sardSettings.hesitationPenalty -
+      sardCounts.alertCount * sardSettings.alertPenalty -
+      sardCounts.correctionCount * sardSettings.correctionPenalty,
+  );
+  const selectedSardStudent = sardStudents.find(
+    (student) => student._id === sardStudentId,
+  );
+
+  const updateSardCount = (field, amount) => {
+    const typeByCount = {
+      hesitationCount: "hesitation",
+      alertCount: "alert",
+      correctionCount: "correction",
+    };
+    setLastActionType(typeByCount[field]);
+    setSardCounts((current) => ({
+      ...current,
+      [field]: Math.max(0, current[field] + amount),
+    }));
+  };
+
+  const addSardMistake = (surahName, ayahNumber) => {
+    setSardMistakes((current) => {
+      if (
+        current.some(
+          (mistake) =>
+            mistake.surahName === surahName &&
+            mistake.ayahNumber === ayahNumber &&
+            mistake.type === lastActionType,
+        )
+      ) {
+        return current;
+      }
+      return [...current, { surahName, ayahNumber, type: lastActionType }];
+    });
+  };
+
+  const resetSardEvaluationDraft = () => {
+    setSardCounts({
+      hesitationCount: 0,
+      alertCount: 0,
+      correctionCount: 0,
+    });
+    setSardMistakes([]);
+    setSelectedSurah("");
+    setSardNotes("");
+    setLastActionType("alert");
+    setSardError("");
+    setSardMessage("");
+  };
+
+  const clearSardContestant = () => {
+    setSardStudentId("");
+    setSardSearch("");
+    resetSardEvaluationDraft();
+  };
+
+  const submitSardEvaluation = async (event) => {
+    event.preventDefault();
+    if (!sardStudentId) {
+      setSardError("اختر متسابقاً قبل حفظ التقييم.");
+      return;
+    }
+    setSardError("");
+    setSardMessage("");
+    setSardLoading(true);
+    try {
+      await api.post("/teacher/sard-evaluations", {
+        studentId: sardStudentId,
+        ...sardCounts,
+        mistakes: sardMistakes,
+        notes: sardNotes,
+      });
+      setSardMessage("تم حفظ نتيجة المتسابق بنجاح.");
+      setSardCounts({
+        hesitationCount: 0,
+        alertCount: 0,
+        correctionCount: 0,
+      });
+      setSardMistakes([]);
+      setSelectedSurah("");
+      setSardNotes("");
+      setLastActionType("alert");
+    } catch (error) {
+      setSardError(
+        getApiErrorMessage(error, "تعذر حفظ تقييم السرد. حاول مرة أخرى."),
+      );
+    } finally {
+      setSardLoading(false);
+    }
+  };
+
   return (
     <div
       className="min-h-screen w-full min-w-0 bg-slate-50 text-slate-900 font-cairo"
@@ -599,15 +752,17 @@ export default function TeacherDashboard() {
       <Navbar role={user?.role} />
       <div className="w-full max-w-full mx-auto px-4 py-6">
         <header className="mb-8 rounded-3xl bg-white p-6 md:p-8 shadow-sm border border-slate-200 overflow-hidden">
-          <AnnouncementsBanner />
+          {!sardMode && <AnnouncementsBanner />}
           <div className="mt-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <h1 className="text-3xl font-semibold text-slate-900">
-                  لوحة تحكم المعلم
+                  {sardMode ? "تقييم السرد القرآني" : "لوحة تحكم المعلم"}
                 </h1>
                 <p className="mt-2 text-slate-600">
-                  تحكم في مهام الطلاب وسجل تقييماتهم وراقب تقدمهم بسهولة.
+                  {sardMode
+                    ? "تقييم مباشر وخالٍ من المشتتات لمتسابقي جزء عمّ."
+                    : "تحكم في مهام الطلاب وسجل تقييماتهم وراقب تقدمهم بسهولة."}
                 </p>
               </div>
               {user && (
@@ -616,8 +771,15 @@ export default function TeacherDashboard() {
                   <p>{`${user.firstName} ${user.lastName}`}</p>
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => setSardMode((current) => !current)}
+                className="rounded-2xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-800"
+              >
+                {sardMode ? "العودة إلى لوحة المعلم" : "تقييم السرد القرآني"}
+              </button>
             </div>
-            <div className="mt-6 rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
+            {!sardMode && <div className="mt-6 rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm text-slate-500">الشكاوى والاقتراحات</p>
@@ -636,11 +798,231 @@ export default function TeacherDashboard() {
                   الشكاوى والاقتراحات
                 </button>
               </div>
-            </div>
+            </div>}
           </div>
         </header>
 
-        {loading ? (
+        {sardMode ? (
+          <form onSubmit={submitSardEvaluation} className="mx-auto max-w-6xl space-y-6">
+            {sardError && <p role="alert" className="rounded-2xl bg-rose-50 p-4 font-semibold text-rose-800">{sardError}</p>}
+            {sardMessage && <p role="status" className="rounded-2xl bg-emerald-50 p-4 font-semibold text-emerald-800">{sardMessage}</p>}
+
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-2 text-sm font-bold text-slate-700">
+                  البحث بكود المسابقة أو اسم الطالب
+                  <input
+                    type="search"
+                    value={sardSearch}
+                    onChange={(event) => setSardSearch(event.target.value)}
+                    placeholder="مثال: BDR-105 أو اسم المتسابق"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base font-normal"
+                  />
+                </label>
+                <label className="space-y-2 text-sm font-bold text-slate-700">
+                  المتسابق المعين لك
+                  <select
+                    required
+                    value={sardStudentId}
+                    onChange={(event) => {
+                      if (event.target.value !== sardStudentId) {
+                        resetSardEvaluationDraft();
+                      }
+                      setSardStudentId(event.target.value);
+                    }}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base"
+                  >
+                    <option value="">اختر المتسابق</option>
+                    {filteredSardStudents.map((student) => (
+                      <option key={student._id} value={student._id}>
+                        {student.competitionCode} — {student.firstName} {student.lastName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {selectedSardStudent && (
+                <div className="mt-5 flex flex-col gap-3 rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-emerald-900">
+                      المتسابق قيد التقييم حالياً:
+                    </p>
+                    <p className="mt-1 text-lg font-extrabold text-slate-950">
+                      <span className="ml-2 text-emerald-800">
+                        {selectedSardStudent.competitionCode}
+                      </span>
+                      {selectedSardStudent.firstName} {selectedSardStudent.lastName}
+                    </p>
+                    {selectedSardStudent.assignedCommittee && (
+                      <p className="mt-1 text-sm text-slate-600">
+                        اللجنة: {selectedSardStudent.assignedCommittee}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearSardContestant}
+                    className="shrink-0 rounded-xl border border-emerald-800 bg-white px-4 py-3 text-sm font-bold text-emerald-900 hover:bg-emerald-100"
+                  >
+                    تغيير المتسابق / مسح
+                  </button>
+                </div>
+              )}
+              {sardLoading && <p className="mt-3 text-sm text-slate-500">جارٍ تحميل بيانات المسابقة...</p>}
+              {!sardLoading && sardStudents.length === 0 && (
+                <p className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">لا يوجد متسابقون معينون لك حتى الآن. اطلب من المسؤول تعيين اللجنة والمعلم.</p>
+              )}
+            </section>
+
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+              <div className="mb-5 text-center">
+                <p className="text-sm font-bold text-slate-500">الدرجة الحية</p>
+                <p className="mt-1 text-5xl font-black text-emerald-800" aria-live="polite">
+                  {sardScore} <span className="text-2xl text-slate-400">/ {sardSettings.maxScore}</span>
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                {[
+                  {
+                    field: "hesitationCount",
+                    label: "تردد ذاتي",
+                    penalty: sardSettings.hesitationPenalty,
+                    color: "border-amber-300 bg-amber-50 text-amber-950",
+                  },
+                  {
+                    field: "alertCount",
+                    label: "تنبيه المعلم",
+                    penalty: sardSettings.alertPenalty,
+                    color: "border-orange-300 bg-orange-50 text-orange-950",
+                  },
+                  {
+                    field: "correctionCount",
+                    label: "فتح / تصحيح المعلم",
+                    penalty: sardSettings.correctionPenalty,
+                    color: "border-rose-300 bg-rose-50 text-rose-950",
+                  },
+                ].map((counter) => (
+                  <article key={counter.field} className={`rounded-2xl border p-5 text-center ${counter.color}`}>
+                    <h2 className="font-extrabold">{counter.label}</h2>
+                    <p className="mt-1 text-sm font-bold">-{counter.penalty} درجة</p>
+                    <p className="my-4 text-4xl font-black">{sardCounts[counter.field]}</p>
+                    <div className="flex justify-center gap-3">
+                      <button type="button" onClick={() => updateSardCount(counter.field, -1)} aria-label={`تراجع عن ${counter.label}`} className="h-12 w-14 rounded-xl border border-current bg-white text-2xl font-black">−1</button>
+                      <button type="button" onClick={() => updateSardCount(counter.field, 1)} aria-label={`إضافة ${counter.label}`} className="h-12 w-14 rounded-xl bg-white text-2xl font-black shadow-sm">+1</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+              <h2 className="text-xl font-extrabold text-slate-900">تحديد مواضع المراجعة — جزء عمّ</h2>
+              <p className="mt-1 text-sm text-slate-500">اختر السورة ثم الآية، أو أضف السورة كاملة.</p>
+              <div className="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="نوع موضع التقييم">
+                <span className="ml-1 text-sm font-bold text-slate-600">التصنيف النشط:</span>
+                {[
+                  {
+                    type: "hesitation",
+                    label: "🟡 تردد ذاتي",
+                    activeClass: "border-amber-500 bg-amber-100 text-amber-950",
+                  },
+                  {
+                    type: "alert",
+                    label: "🟠 تنبيه المعلم",
+                    activeClass: "border-orange-500 bg-orange-100 text-orange-950",
+                  },
+                  {
+                    type: "correction",
+                    label: "🔴 فتح المعلم",
+                    activeClass: "border-rose-500 bg-rose-100 text-rose-950",
+                  },
+                ].map((category) => (
+                  <button
+                    key={category.type}
+                    type="button"
+                    aria-pressed={lastActionType === category.type}
+                    onClick={() => setLastActionType(category.type)}
+                    className={`rounded-full border px-3 py-2 text-sm font-bold ${
+                      lastActionType === category.type
+                        ? category.activeClass
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {category.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {juzAmmaSurahs.map((surah) => (
+                  <button
+                    key={surah.surahName}
+                    type="button"
+                    aria-expanded={selectedSurah === surah.surahName}
+                    onClick={() => setSelectedSurah((current) => current === surah.surahName ? "" : surah.surahName)}
+                    className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
+                      selectedSurah === surah.surahName
+                        ? "border-emerald-800 bg-emerald-800 text-white"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-400"
+                    }`}
+                  >
+                    {surah.surahName}
+                  </button>
+                ))}
+              </div>
+              {selectedSurah && (
+                <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="font-bold">سورة {selectedSurah} — اختر الآيات</h3>
+                    <button
+                      type="button"
+                      onClick={() => addSardMistake(selectedSurah, null)}
+                      className="rounded-xl border border-emerald-700 bg-white px-4 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-50"
+                    >
+                      السورة كاملة
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2 sm:grid-cols-8 md:grid-cols-10">
+                    {Array.from(
+                      { length: juzAmmaSurahs.find((surah) => surah.surahName === selectedSurah).ayahCount },
+                      (_, index) => index + 1,
+                    ).map((ayahNumber) => (
+                      <button
+                        key={ayahNumber}
+                        type="button"
+                        onClick={() => addSardMistake(selectedSurah, ayahNumber)}
+                        className="min-h-11 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 hover:border-emerald-500 hover:bg-emerald-50"
+                      >
+                        {ayahNumber}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="mt-5 flex flex-wrap gap-2" aria-live="polite">
+                {sardMistakes.map((mistake, index) => (
+                  <span
+                    key={`${mistake.surahName}-${mistake.ayahNumber}-${mistake.type}-${index}`}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-bold ${getSardMistakePresentation(mistake).className}`}
+                  >
+                    {getSardMistakePresentation(mistake).text}
+                    <button type="button" onClick={() => setSardMistakes((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label="حذف موضع المراجعة" className="text-lg leading-none">×</button>
+                  </span>
+                ))}
+                {!sardMistakes.length && <span className="text-sm text-slate-500">لم تتم إضافة مواضع مراجعة.</span>}
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+              <label className="block space-y-2 text-sm font-bold text-slate-700">
+                ملاحظات (اختياري)
+                <textarea value={sardNotes} onChange={(event) => setSardNotes(event.target.value)} rows="3" maxLength="2000" className="w-full rounded-xl border border-slate-300 px-4 py-3 font-normal" />
+              </label>
+              <button type="submit" disabled={sardLoading || !sardStudentId} className="mt-5 w-full rounded-2xl bg-emerald-800 px-6 py-4 text-lg font-extrabold text-white shadow-sm hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50">
+                {sardLoading ? "جارٍ الحفظ..." : "حفظ نتيجة التقييم"}
+              </button>
+            </section>
+          </form>
+        ) : loading ? (
           <div className="flex justify-center py-16">
             <div className="animate-spin rounded-full h-14 w-14 border-4 border-quran-600 border-t-transparent"></div>
           </div>

@@ -6,6 +6,7 @@ import { getApiErrorMessage } from "../utils/apiError";
 import Navbar from "../components/Navbar";
 import AnnouncementsBanner from "../components/AnnouncementsBanner";
 import PointsSystemGuide from "../components/PointsSystemGuide";
+import { getSardMistakePresentation } from "../utils/sardMistakes";
 
 const rankConfig = [
   {
@@ -598,6 +599,59 @@ export default function StudentDashboard() {
             </div>
           </div>
         </header>
+
+        {dashboard.student.competitionCode && (
+          <section className="mb-8 rounded-3xl border border-emerald-200 bg-gradient-to-l from-emerald-50 via-white to-amber-50 p-6 shadow-sm" aria-label="نتيجة تحدي سرد جزء عمّ">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-emerald-800">كود تحدي سرد جزء عمّ</p>
+                <p className="mt-1 text-3xl font-black tracking-wide text-emerald-950">{dashboard.student.competitionCode}</p>
+              </div>
+              {dashboard.student.assignedCommittee && (
+                <span className="rounded-full bg-amber-100 px-4 py-2 text-sm font-bold text-amber-950">
+                  اللجنة: {dashboard.student.assignedCommittee}
+                </span>
+              )}
+            </div>
+            <div className="mt-5 rounded-2xl border border-emerald-100 bg-white p-5">
+              <h2 className="text-xl font-extrabold text-slate-900">نتيجة تحدي سرد جزء عمّ</h2>
+              {dashboard.sardEvaluation ? (
+                <>
+                  <p className="mt-3 text-3xl font-black text-emerald-800">
+                    {dashboard.sardEvaluation.finalScore} / {dashboard.sardEvaluation.maxScore}
+                  </p>
+                  <div className="mt-4 grid gap-2 text-sm text-slate-700 sm:grid-cols-3">
+                    <p>تردد ذاتي: <b>{dashboard.sardEvaluation.hesitationCount}</b></p>
+                    <p>تنبيهات المعلم: <b>{dashboard.sardEvaluation.alertCount}</b></p>
+                    <p>فتح المعلم: <b>{dashboard.sardEvaluation.correctionCount}</b></p>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-600">
+                    الشيخ المقيّم: {dashboard.sardEvaluation.teacherId
+                      ? `${dashboard.sardEvaluation.teacherId.firstName} ${dashboard.sardEvaluation.teacherId.lastName}`
+                      : "غير محدد"}
+                  </p>
+                  <div className="mt-3">
+                    <p className="text-sm font-bold text-slate-700">تفاصيل مواضع التقييم والأخطاء</p>
+                    {dashboard.sardEvaluation.mistakes?.length ? (
+                      <ul className="mt-2 flex flex-wrap gap-2">
+                        {dashboard.sardEvaluation.mistakes.map((mistake, index) => (
+                          <li
+                            key={`${mistake.surahName}-${mistake.ayahNumber}-${mistake.type}-${index}`}
+                            className={`rounded-full px-3 py-2 text-sm font-semibold ${getSardMistakePresentation(mistake).className}`}
+                          >
+                            {getSardMistakePresentation(mistake).text}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="mt-1 text-sm text-slate-500">لا توجد مواضع مراجعة مسجلة.</p>}
+                  </div>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-slate-600">لم يتم تسجيل نتيجة للتحدي بعد.</p>
+              )}
+            </div>
+          </section>
+        )}
 
         <section className="mb-8 rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm sm:p-6">
           <label className="flex cursor-pointer items-start gap-4">

@@ -14,6 +14,7 @@ import StudentDashboard from "./pages/StudentDashboard";
 import StudentLessons from "./pages/StudentLessons";
 import ParentDashboard from "./pages/ParentDashboard";
 import RewardsStore from "./pages/RewardsStore";
+import SardRegistrationPage from "./pages/SardRegistrationPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import "./index.css";
 
@@ -25,6 +26,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/sard-register" element={<SardRegistrationPage />} />
         <Route
           path="/leaderboard"
           element={

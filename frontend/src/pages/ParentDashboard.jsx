@@ -4,6 +4,7 @@ import { getApiErrorMessage } from "../utils/apiError";
 import Navbar from "../components/Navbar";
 import PointsSystemGuide from "../components/PointsSystemGuide";
 import AnnouncementsBanner from "../components/AnnouncementsBanner";
+import { getSardMistakePresentation } from "../utils/sardMistakes";
 
 const formatDate = (isoDate) => {
   return new Intl.DateTimeFormat("ar-EG", {
@@ -343,7 +344,56 @@ export default function ParentDashboard() {
                         <h3 className="mt-2 text-2xl font-semibold text-slate-900">
                           {child.firstName} {child.lastName}
                         </h3>
+                        {child.competitionCode && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-extrabold text-emerald-900">
+                              كود المسابقة: {child.competitionCode}
+                            </span>
+                            {child.assignedCommittee && (
+                              <span className="rounded-full bg-amber-100 px-3 py-1.5 text-sm font-bold text-amber-950">
+                                اللجنة: {child.assignedCommittee}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
+                      {child.competitionCode && (
+                        <section className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4" aria-label={`نتيجة تحدي سرد جزء عمّ للطالب ${child.firstName}`}>
+                          <h4 className="font-extrabold text-emerald-950">نتيجة تحدي سرد جزء عمّ</h4>
+                          {child.sardEvaluation ? (
+                            <>
+                              <p className="mt-2 text-2xl font-black text-emerald-800">
+                                {child.sardEvaluation.finalScore} / {child.sardEvaluation.maxScore}
+                              </p>
+                              <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-3">
+                                <p>تردد ذاتي: <b>{child.sardEvaluation.hesitationCount}</b></p>
+                                <p>تنبيهات المعلم: <b>{child.sardEvaluation.alertCount}</b></p>
+                                <p>فتح المعلم: <b>{child.sardEvaluation.correctionCount}</b></p>
+                              </div>
+                              <p className="mt-3 text-sm text-slate-600">
+                                الشيخ المقيّم: {child.sardEvaluation.teacherId
+                                  ? `${child.sardEvaluation.teacherId.firstName} ${child.sardEvaluation.teacherId.lastName}`
+                                  : "غير محدد"}
+                              </p>
+                              <div className="mt-3 text-sm">
+                                <p className="font-bold text-slate-700">تفاصيل مواضع التقييم والأخطاء</p>
+                                {child.sardEvaluation.mistakes?.length ? (
+                                  <ul className="mt-2 flex flex-wrap gap-2">
+                                    {child.sardEvaluation.mistakes.map((mistake, index) => (
+                                      <li
+                                        key={`${mistake.surahName}-${mistake.ayahNumber}-${mistake.type}-${index}`}
+                                        className={`rounded-full px-3 py-2 font-semibold ${getSardMistakePresentation(mistake).className}`}
+                                      >
+                                        {getSardMistakePresentation(mistake).text}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : <p className="mt-1 text-slate-500">لا توجد مواضع مراجعة مسجلة.</p>}
+                              </div>
+                            </>
+                          ) : <p className="mt-2 text-sm text-slate-600">لم يتم تسجيل نتيجة للتحدي بعد.</p>}
+                        </section>
+                      )}
                       <div className="rounded-2xl border border-emerald-100 bg-white p-4">
                         <label className="flex cursor-pointer items-start gap-3">
                           <input

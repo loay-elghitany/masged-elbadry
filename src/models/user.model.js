@@ -63,10 +63,38 @@ const UserSchema = new Schema({
     ref: "User",
     required: [
       function () {
-        return this.role === "Student";
+        return this.role === "Student" && !this.competitionCode;
       },
       "Student must have an assigned teacher",
     ],
+  },
+  parentId: {
+    type: Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+  competitionCode: {
+    type: String,
+    unique: true,
+    sparse: true,
+    uppercase: true,
+    trim: true,
+  },
+  parentPhone: {
+    type: String,
+    trim: true,
+  },
+  ageOrGrade: {
+    type: String,
+    trim: true,
+  },
+  talent: {
+    type: String,
+    trim: true,
+  },
+  assignedCommittee: {
+    type: String,
+    trim: true,
   },
   childrenIds: [
     {

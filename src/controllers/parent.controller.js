@@ -3,12 +3,13 @@ const Group = require("../models/group.model");
 const Evaluation = require("../models/evaluation.model");
 const Assignment = require("../models/assignment.model");
 const LeaveRequest = require("../models/leaverequest.model");
+const SardEvaluation = require("../models/sardEvaluation.model");
 
 const getParentDashboard = async (req, res, next) => {
   try {
     const parent = await User.findById(req.user._id).populate({
       path: "childrenIds",
-      select: "firstName lastName email phone role teacherId publicLeaderboardOptIn",
+      select: "firstName lastName email phone role teacherId publicLeaderboardOptIn competitionCode assignedCommittee",
       populate: {
         path: "teacherId",
         select: "firstName lastName",
@@ -31,11 +32,17 @@ const getParentDashboard = async (req, res, next) => {
           .sort({ date: -1 })
           .populate("groupId", "name")
           .populate("teacherId", "firstName lastName");
+        const sardEvaluation = await SardEvaluation.findOne({
+          studentId: child._id,
+        })
+          .sort({ createdAt: -1 })
+          .populate("teacherId", "firstName lastName");
 
         return {
           ...child.toObject(),
           group,
           evaluations,
+          sardEvaluation,
         };
       }),
     );
