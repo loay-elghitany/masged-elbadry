@@ -1,31 +1,41 @@
 ﻿const Group = require("../models/group.model");
-const User = require("../models/user.model");
+const SardEvaluation = require("../models/sardEvaluation.model");
 
 const getTopStudents = async (req, res) => {
   try {
-    const students = await User.find({
-      role: "Student",
-      publicLeaderboardOptIn: true,
-    })
-      .select("firstName lastName points avatar badges")
-      .populate("badges.badgeId", "name icon")
-      .sort({ points: -1, _id: 1 })
-      .limit(10)
+    const evaluations = await SardEvaluation.find()
+      .sort({ createdAt: -1, _id: -1 })
+      .populate("studentId", "firstName lastName competitionCode")
+      .populate("teacherId", "firstName lastName")
+      .populate("evaluatedBy.teacherId", "firstName lastName")
       .lean();
-
-    const leaderboard = students.map((student, index) => ({
-      rank: index + 1,
-      firstName: student.firstName,
-      lastName: student.lastName,
-      points: student.points || 0,
-      avatar: student.avatar || "",
-      badges: (student.badges || [])
-        .map((badge) => ({
-          name: badge.badgeId?.name || "",
-          icon: badge.badgeId?.icon || "",
-        }))
-        .filter((badge) => badge.name || badge.icon),
-    }));
+    const latestByStudent = new Map();
+    for (const evaluation of evaluations) {
+      const student = evaluation.studentId;
+      if (!student?.competitionCode || latestByStudent.has(student._id.toString())) {
+        continue;
+      }
+      latestByStudent.set(student._id.toString(), { evaluation, student });
+    }
+    const leaderboard = [...latestByStudent.values()]
+      .sort(
+        (first, second) =>
+          second.evaluation.finalScore - first.evaluation.finalScore ||
+          new Date(second.evaluation.createdAt) - new Date(first.evaluation.createdAt),
+      )
+      .map(({ evaluation, student }, index) => ({
+        rank: index + 1,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        competitionCode: student.competitionCode,
+        finalScore: evaluation.finalScore,
+        maxScore: evaluation.maxScore,
+        evaluatedBy:
+          evaluation.evaluatedBy?.name ||
+          (evaluation.teacherId
+            ? `${evaluation.teacherId.firstName || ""} ${evaluation.teacherId.lastName || ""}`.trim()
+            : ""),
+      }));
 
     res.json({ success: true, leaderboard });
   } catch (error) {

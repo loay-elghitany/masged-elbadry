@@ -54,8 +54,15 @@ export default function SuperAdminDashboard() {
   });
   const [sardSettingsStatus, setSardSettingsStatus] = useState("");
   const [sardReceptionSearch, setSardReceptionSearch] = useState("");
-  const [sardCommitteeDrafts, setSardCommitteeDrafts] = useState({});
   const [sardStatus, setSardStatus] = useState("");
+  const [sardWalkInParentName, setSardWalkInParentName] = useState("");
+  const [sardWalkInPhone, setSardWalkInPhone] = useState("");
+  const [sardWalkInPassword, setSardWalkInPassword] = useState("");
+  const [sardWalkInChildren, setSardWalkInChildren] = useState([
+    { childName: "", ageOrGrade: "" },
+  ]);
+  const [sardWalkInRegistration, setSardWalkInRegistration] = useState(null);
+  const [sardWalkInLoading, setSardWalkInLoading] = useState(false);
 
   const navigationGroups = [
     {
@@ -343,58 +350,13 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  const handleAssignSardCommittee = async (
-    student,
-    assignedCommittee,
-    teacherId,
-  ) => {
-    setSardStatus("");
-    try {
-      await api.put(
-        `/admin/sard/students/${student._id}/committee`,
-        { assignedCommittee, teacherId },
-      );
-      const teacher = teachers.find((item) => item._id === teacherId);
-      setSardStudents((current) =>
-        current.map((item) =>
-          item._id === student._id
-            ? {
-                ...item,
-                assignedCommittee,
-                teacherId: teacher
-                  ? {
-                      _id: teacher._id,
-                      firstName: teacher.firstName,
-                      lastName: teacher.lastName,
-                    }
-                  : null,
-              }
-            : item,
-        ),
-      );
-      setSardCommitteeDrafts((current) => ({
-        ...current,
-        [student._id]: assignedCommittee,
-      }));
-      setSardStatus(`تم تحديث تعيين ${student.competitionCode}.`);
-    } catch (error) {
-      setSardStatus(
-        getApiErrorMessage(error, "تعذر تحديث لجنة المتسابق."),
-      );
-    }
-  };
-
   const exportSardCsv = () => {
-    const header = ["Competition Code", "Student", "Parent Phone", "Talent", "Committee", "Teacher", "Score", "Maximum"];
+    const header = ["Competition Code", "Student", "Parent Phone", "Talent", "Score", "Maximum"];
     const rows = filteredSardStudents.map((student) => [
       student.competitionCode,
       `${student.firstName} ${student.lastName}`,
       student.parentPhone || "",
       student.talent || "",
-      student.assignedCommittee || "",
-      student.teacherId
-        ? `${student.teacherId.firstName} ${student.teacherId.lastName}`
-        : "",
       student.latestEvaluation?.finalScore ?? "",
       student.latestEvaluation?.maxScore ?? sardSettings.maxScore,
     ]);
@@ -427,12 +389,63 @@ export default function SuperAdminDashboard() {
   const filteredReceptionStudents = sardReceptionSearch.trim()
     ? sardStudents
         .filter((student) =>
-          `${student.competitionCode} ${student.firstName} ${student.lastName}`
+          `${student.competitionCode} ${student.firstName} ${student.lastName} ${student.parentId?.firstName || ""} ${student.parentId?.lastName || ""} ${student.parentPhone || ""}`
             .toLowerCase()
             .includes(sardReceptionSearch.trim().toLowerCase()),
         )
         .slice(0, 5)
     : [];
+
+  const registerSardWalkIn = async (event) => {
+    event.preventDefault();
+    setSardStatus("");
+    setSardWalkInLoading(true);
+    try {
+      const { data } = await api.post("/sard/register", {
+        parentName: sardWalkInParentName,
+        parentPhone: sardWalkInPhone,
+        parentPassword: sardWalkInPassword,
+        children: sardWalkInChildren,
+      });
+      setSardWalkInRegistration(data);
+      setSardStudents((current) => [
+        ...data.children.map((child) => {
+          const [firstName, ...lastParts] = child.childName.split(/\s+/);
+          return {
+            _id: child.id,
+            firstName,
+            lastName: lastParts.join(" ") || firstName,
+            competitionCode: child.sardCode,
+            parentPhone: sardWalkInPhone,
+            parentId: {
+              firstName: sardWalkInParentName,
+              lastName: "",
+            },
+            latestEvaluation: null,
+          };
+        }),
+        ...current,
+      ]);
+      setSardWalkInParentName("");
+      setSardWalkInPhone("");
+      setSardWalkInPassword("");
+      setSardWalkInChildren([{ childName: "", ageOrGrade: "" }]);
+    } catch (error) {
+      setSardStatus(getApiErrorMessage(error, "تعذر تسجيل المتسابقين."));
+    } finally {
+      setSardWalkInLoading(false);
+    }
+  };
+
+  const copySardCredentials = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setSardStatus("تم نسخ بيانات الدخول.");
+    } catch (error) {
+      console.error("Could not copy Sard registration credentials:", error);
+      setSardStatus("تعذر النسخ تلقائياً. يمكنك تحديد البيانات ونسخها.");
+    }
+  };
 
   const getArabicRole = (role) => {
     switch (role) {
@@ -2969,12 +2982,73 @@ export default function SuperAdminDashboard() {
                 <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                   <div className="mb-5">
                     <h2 className="text-xl font-bold text-slate-900">
-                      استقبال المتسابق وتحديد اللجنة
+                      استقبال المتسابقين والتسجيل السريع
                     </h2>
                     <p className="mt-1 text-sm text-slate-500">
-                      ابحث عن الكود أو الاسم، ثم عيّن المعلم مباشرة أو احفظ اسم لجنة مخصص.
+                      سجل أبناء الزائر غير المسجلين أو ابحث للتحقق من كود المتسابق.
                     </p>
                   </div>
+                  <form onSubmit={registerSardWalkIn} className="mb-8 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5">
+                    <h3 className="font-extrabold text-emerald-950">تسجيل زائر جديد</h3>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <label className="space-y-1 text-sm font-bold text-slate-700">
+                        اسم ولي الأمر
+                        <input required minLength={2} value={sardWalkInParentName} onChange={(event) => setSardWalkInParentName(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-3 font-normal" />
+                      </label>
+                      <label className="space-y-1 text-sm font-bold text-slate-700">
+                        رقم الهاتف
+                        <input required minLength={8} type="tel" value={sardWalkInPhone} onChange={(event) => setSardWalkInPhone(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-3 font-normal" />
+                      </label>
+                      <label className="space-y-1 text-sm font-bold text-slate-700 md:col-span-2">
+                        كلمة المرور (اختياري، الافتراضي رقم الهاتف)
+                        <input minLength={8} type="password" value={sardWalkInPassword} onChange={(event) => setSardWalkInPassword(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-3 font-normal" />
+                      </label>
+                    </div>
+                    <div className="mt-5 space-y-3">
+                      {sardWalkInChildren.map((child, index) => (
+                        <fieldset key={index} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
+                          <legend className="px-2 text-sm font-bold text-slate-600">الابن {index + 1}</legend>
+                          <label className="space-y-1 text-sm font-bold text-slate-700">
+                            اسم الابن
+                            <input required minLength={2} value={child.childName} onChange={(event) => setSardWalkInChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, childName: event.target.value } : item))} className="w-full rounded-xl border border-slate-300 px-3 py-3 font-normal" />
+                          </label>
+                          <label className="space-y-1 text-sm font-bold text-slate-700">
+                            العمر / المرحلة
+                            <input required value={child.ageOrGrade} onChange={(event) => setSardWalkInChildren((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ageOrGrade: event.target.value } : item))} className="w-full rounded-xl border border-slate-300 px-3 py-3 font-normal" />
+                          </label>
+                          {sardWalkInChildren.length > 1 && (
+                            <button type="button" onClick={() => setSardWalkInChildren((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="justify-self-start text-sm font-semibold text-rose-700 sm:col-span-2">حذف الابن</button>
+                          )}
+                        </fieldset>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button type="button" disabled={sardWalkInChildren.length >= 20} onClick={() => setSardWalkInChildren((current) => [...current, { childName: "", ageOrGrade: "" }])} className="rounded-xl border border-emerald-700 px-4 py-3 text-sm font-bold text-emerald-800 disabled:opacity-50">
+                        + إضافة ابن آخر
+                      </button>
+                      <button type="submit" disabled={sardWalkInLoading} className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">
+                        {sardWalkInLoading ? "جارٍ التسجيل..." : "تسجيل وإصدار الأكواد"}
+                      </button>
+                    </div>
+                  </form>
+                  {sardWalkInRegistration && (
+                    <div className="mb-8 rounded-2xl border-2 border-emerald-300 bg-white p-5" aria-live="polite">
+                      <h3 className="font-extrabold text-emerald-900">تم التسجيل - احتفظ بالأكواد وبيانات الدخول</h3>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {sardWalkInRegistration.children.map((child) => (
+                          <article key={child.sardCode} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xl font-black text-emerald-800">{child.sardCode}</p>
+                            <p className="mt-1 font-bold">{child.childName}</p>
+                            <p className="mt-2 break-all text-sm">البريد: <bdi>{child.email}</bdi></p>
+                            <p className="mt-1 break-all text-sm">كلمة المرور: <bdi>{child.password}</bdi></p>
+                            <button type="button" onClick={() => copySardCredentials(`${child.childName}\n${child.sardCode}\n${child.email}\n${child.password}`)} className="mt-3 rounded-lg border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800">نسخ البيانات</button>
+                          </article>
+                        ))}
+                      </div>
+                      <p className="mt-4 break-all text-sm">حساب ولي الأمر: <bdi>{sardWalkInRegistration.parent.email}</bdi> — كلمة المرور: <bdi>{sardWalkInRegistration.parent.password}</bdi></p>
+                      <button type="button" onClick={() => copySardCredentials(`${sardWalkInRegistration.parent.email}\n${sardWalkInRegistration.parent.password}`)} className="mt-2 rounded-lg border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800">نسخ بيانات ولي الأمر</button>
+                    </div>
+                  )}
                   <label className="block space-y-2 text-sm font-bold text-slate-700">
                     البحث السريع عن متسابق
                     <input
@@ -2982,7 +3056,7 @@ export default function SuperAdminDashboard() {
                       autoComplete="off"
                       value={sardReceptionSearch}
                       onChange={(event) => setSardReceptionSearch(event.target.value)}
-                      placeholder="ابحث بالكود مثل 105 أو باسم الطالب..."
+                      placeholder="ابحث بالكود 105 أو باسم الطالب أو ولي الأمر..."
                       className="w-full rounded-2xl border-2 border-emerald-300 bg-emerald-50/40 px-5 py-4 text-base shadow-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
                     />
                   </label>
@@ -2990,83 +3064,20 @@ export default function SuperAdminDashboard() {
                     {filteredReceptionStudents.map((student) => (
                       <article
                         key={student._id}
-                        className="grid gap-4 rounded-2xl border border-slate-200 p-4 lg:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1fr)_minmax(14rem,1fr)] lg:items-center"
+                        className="rounded-2xl border border-slate-200 p-4"
                       >
-                        <div>
-                          <p className="text-xs font-bold text-emerald-800">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-lg font-black text-emerald-800">
                             {student.competitionCode}
-                          </p>
-                          <p className="mt-1 font-extrabold text-slate-900">
-                            {student.firstName} {student.lastName}
-                          </p>
-                          {student.assignedCommittee && (
-                            <p className="mt-1 text-xs text-slate-500">
-                              اللجنة الحالية: {student.assignedCommittee}
                             </p>
-                          )}
-                        </div>
-                        <label className="space-y-1 text-xs font-bold text-slate-600">
-                          تعيين سريع لمعلم
-                          <select
-                            value={student.teacherId?._id || ""}
-                            onChange={(event) => {
-                              const teacherId = event.target.value;
-                              const teacher = teachers.find(
-                                (item) => item._id === teacherId,
-                              );
-                              const assignedCommittee = teacher
-                                ? `${teacher.firstName} ${teacher.lastName}`
-                                : student.assignedCommittee || "";
-                              handleAssignSardCommittee(
-                                student,
-                                assignedCommittee,
-                                teacherId,
-                              );
-                            }}
-                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm"
-                          >
-                            <option value="">بدون معلم معين</option>
-                            {teachers.map((teacher) => (
-                              <option key={teacher._id} value={teacher._id}>
-                                {teacher.firstName} {teacher.lastName}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <div className="flex items-end gap-2">
-                          <label className="min-w-0 flex-1 space-y-1 text-xs font-bold text-slate-600">
-                            لجنة / قاعة مخصصة
-                            <input
-                              value={
-                                sardCommitteeDrafts[student._id] ??
-                                student.assignedCommittee ??
-                                ""
-                              }
-                              onChange={(event) =>
-                                setSardCommitteeDrafts((current) => ({
-                                  ...current,
-                                  [student._id]: event.target.value,
-                                }))
-                              }
-                              placeholder="اكتب اسم اللجنة"
-                              className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm"
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleAssignSardCommittee(
-                                student,
-                                sardCommitteeDrafts[student._id] ??
-                                  student.assignedCommittee ??
-                                  "",
-                                student.teacherId?._id || "",
-                              )
-                            }
-                            className="shrink-0 rounded-xl bg-amber-500 px-3 py-3 text-sm font-bold text-white hover:bg-amber-600"
-                          >
-                            حفظ اللجنة
-                          </button>
+                            <p className="mt-1 font-extrabold text-slate-900">
+                            {student.firstName} {student.lastName}
+                            </p>
+                          </div>
+                          <p className="text-sm text-slate-600">
+                            ولي الأمر: {`${student.parentId?.firstName || ""} ${student.parentId?.lastName || ""}`.trim() || "—"}
+                          </p>
                         </div>
                       </article>
                     ))}
@@ -3112,7 +3123,7 @@ export default function SuperAdminDashboard() {
                     <table className="w-full min-w-[900px] text-right text-sm">
                       <thead className="bg-slate-50 text-slate-600">
                         <tr>
-                          {["الكود", "اسم الطالب", "هاتف ولي الأمر", "الموهبة", "اللجنة", "المعلم", "آخر نتيجة"].map((heading) => (
+                          {["الكود", "اسم الطالب", "هاتف ولي الأمر", "الموهبة", "آخر نتيجة"].map((heading) => (
                             <th key={heading} className="px-4 py-3 font-bold">{heading}</th>
                           ))}
                         </tr>
@@ -3124,8 +3135,6 @@ export default function SuperAdminDashboard() {
                             <td className="px-4 py-3">{student.firstName} {student.lastName}</td>
                             <td className="px-4 py-3" dir="ltr">{student.parentPhone || "—"}</td>
                             <td className="px-4 py-3">{student.talent || "—"}</td>
-                            <td className="px-4 py-3">{student.assignedCommittee || "غير محددة"}</td>
-                            <td className="px-4 py-3">{student.teacherId ? `${student.teacherId.firstName} ${student.teacherId.lastName}` : "—"}</td>
                             <td className="px-4 py-3 font-bold">
                               {student.latestEvaluation
                                 ? `${student.latestEvaluation.finalScore} / ${student.latestEvaluation.maxScore}`
@@ -3134,7 +3143,7 @@ export default function SuperAdminDashboard() {
                           </tr>
                         ))}
                         {!filteredSardStudents.length && (
-                          <tr><td colSpan="7" className="px-4 py-8 text-center text-slate-500">لا يوجد متسابقون مطابقون للبحث.</td></tr>
+                          <tr><td colSpan="5" className="px-4 py-8 text-center text-slate-500">لا يوجد متسابقون مطابقون للبحث.</td></tr>
                         )}
                       </tbody>
                     </table>

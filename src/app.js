@@ -15,6 +15,7 @@ const groupsRoutes = require("./routes/groups.routes");
 const ticketRoutes = require("./routes/ticket.routes");
 const settingsRoutes = require("./routes/settings.routes");
 const publicRoutes = require("./routes/public.routes");
+const sardRoutes = require("./routes/sard.routes");
 const { mapErrorToResponse } = require("./utils/error.helper");
 
 const app = express();
@@ -235,6 +236,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 
 // Other routes
 app.use("/api/public", publicRoutes);
+app.use("/api/sard", sardRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/admin/complaints", ticketRoutes); // Tickets: both public and admin-facing
 app.use("/api/admin", adminRoutes);

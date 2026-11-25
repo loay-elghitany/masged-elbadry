@@ -350,6 +350,7 @@ test("searches reception contestants instantly and assigns a teacher in one sele
               competitionCode: "BDR-105",
               assignedCommittee: "",
               teacherId: null,
+              parentId: { firstName: "Ahmed", lastName: "Yusuf" },
               latestEvaluation: null,
             },
           ],
@@ -369,25 +370,13 @@ test("searches reception contestants instantly and assigns a teacher in one sele
   );
 
   const search = await screen.findByPlaceholderText(
-    "ابحث بالكود مثل 105 أو باسم الطالب...",
+    "ابحث بالكود 105 أو باسم الطالب أو ولي الأمر...",
   );
   fireEvent.change(search, { target: { value: "105" } });
   await screen.findAllByText("Yusuf Ahmed");
   const contestantRow = search.closest("section").querySelector("article");
   expect(contestantRow).not.toBeNull();
-
-  fireEvent.change(
-    within(contestantRow).getByLabelText("تعيين سريع لمعلم"),
-    { target: { value: "teacher-1" } },
-  );
-
-  await waitFor(() => {
-    expect(api.put).toHaveBeenCalledWith(
-      "/admin/sard/students/contestant-1/committee",
-      {
-        assignedCommittee: "Teacher A",
-        teacherId: "teacher-1",
-      },
-    );
-  });
+  expect(within(contestantRow).getByText("BDR-105")).toBeInTheDocument();
+  expect(within(contestantRow).getByText(/ولي الأمر: Ahmed Yusuf/)).toBeInTheDocument();
+  expect(screen.queryByText("تعيين سريع لمعلم")).not.toBeInTheDocument();
 });

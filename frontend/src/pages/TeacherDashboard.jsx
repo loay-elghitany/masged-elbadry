@@ -820,7 +820,7 @@ export default function TeacherDashboard() {
                   />
                 </label>
                 <label className="space-y-2 text-sm font-bold text-slate-700">
-                  المتسابق المعين لك
+                  المتسابق المسجل في المسابقة
                   <select
                     required
                     value={sardStudentId}
@@ -870,7 +870,7 @@ export default function TeacherDashboard() {
               )}
               {sardLoading && <p className="mt-3 text-sm text-slate-500">جارٍ تحميل بيانات المسابقة...</p>}
               {!sardLoading && sardStudents.length === 0 && (
-                <p className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">لا يوجد متسابقون معينون لك حتى الآن. اطلب من المسؤول تعيين اللجنة والمعلم.</p>
+                <p className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">لا يوجد متسابقون مسجلون في المسابقة حتى الآن.</p>
               )}
             </section>
 

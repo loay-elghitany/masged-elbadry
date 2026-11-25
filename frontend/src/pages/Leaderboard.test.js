@@ -20,9 +20,10 @@ beforeEach(() => {
           rank: 1,
           firstName: "Amina",
           lastName: "Ali",
-          points: 100,
-          avatar: "",
-          badges: [],
+          competitionCode: "BDR-101",
+          finalScore: 97,
+          maxScore: 100,
+          evaluatedBy: "Mona Teacher",
         },
       ],
     },
@@ -58,6 +59,6 @@ test("shows the public leaderboard and guest navigation without requesting priva
   ).toHaveAttribute("href", "/login");
   await waitFor(() => {
     expect(api.get).toHaveBeenCalledTimes(1);
-    expect(api.get).toHaveBeenCalledWith("/leaderboard/students");
+    expect(api.get).toHaveBeenCalledWith("/leaderboard");
   });
 });

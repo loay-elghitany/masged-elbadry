@@ -13,6 +13,18 @@ const SardEvaluationSchema = new Schema({
     ref: "User",
     required: true,
   },
+  evaluatedBy: {
+    teacherId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+  },
   maxScore: {
     type: Number,
     required: true,

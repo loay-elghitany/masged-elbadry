@@ -86,6 +86,8 @@ describe("POST /api/auth/login", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(response.body.message).toBe("البريد الإلكتروني وكلمة المرور مطلوبة.");
+    expect(response.body.message).toBe(
+      "البريد الإلكتروني أو رقم الهاتف أو كود المسابقة وكلمة المرور مطلوبة.",
+    );
   });
 });

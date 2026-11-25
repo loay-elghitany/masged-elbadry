@@ -3,26 +3,44 @@ const User = require("../models/user.model");
 
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { identifier, email, password } = req.body;
+    const loginIdentifier = String(identifier || email || "").trim();
 
-    if (!email || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({
         success: false,
-        message: "البريد الإلكتروني وكلمة المرور مطلوبة.",
+        message: "البريد الإلكتروني أو رقم الهاتف أو كود المسابقة وكلمة المرور مطلوبة.",
       });
     }
 
-    const user = await User.findOne({ email });
+    const codeDigits = loginIdentifier.match(/^(?:BDR-)?(\d+)$/i)?.[1];
+    const lookup = [
+      { email: loginIdentifier.toLowerCase() },
+      { phone: loginIdentifier },
+      { parentPhone: loginIdentifier },
+    ];
+    if (codeDigits) lookup.push({ competitionCode: `BDR-${codeDigits}` });
+    let user = null;
+    if (!loginIdentifier.includes("@")) {
+      const directPhoneAccount = await User.findOne({ phone: loginIdentifier });
+      if (
+        directPhoneAccount &&
+        (await directPhoneAccount.comparePassword(password))
+      ) {
+        user = directPhoneAccount;
+      }
+    }
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message:
-          "خطأ في اسم المستخدم أو كلمة المرور. يرجى التحقق وإعادة المحاولة.",
-      });
+      const candidates = await User.find({ $or: lookup });
+      for (const candidate of candidates) {
+        if (await candidate.comparePassword(password)) {
+          user = candidate;
+          break;
+        }
+      }
     }
 
-    const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) {
+    if (!user) {
       return res.status(401).json({
         success: false,
         message:

@@ -3,8 +3,8 @@ const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const jwt = require("jsonwebtoken");
 const app = require("../src/app");
-const Badge = require("../src/models/badge.model");
 const User = require("../src/models/user.model");
+const SardEvaluation = require("../src/models/sardEvaluation.model");
 
 jest.mock("../src/services/quran.service");
 
@@ -61,50 +61,71 @@ afterAll(async () => {
 });
 
 describe("GET /api/leaderboard", () => {
-  it("makes the opted-in student leaderboard public and exposes display fields only", async () => {
-    const privateStudentResponse = await request(app).get(
-      "/api/leaderboard/students",
-    );
-
-    expect(privateStudentResponse.status).toBe(200);
-    expect(privateStudentResponse.body.leaderboard).toEqual([]);
-
-    const badge = await Badge.create({
-      name: "قارئ متميز",
-      icon: "🌟",
-      description: "Private badge description",
+  it("publicly ranks all evaluated Sard participants without opt-in filtering", async () => {
+    const first = await User.create({
+      firstName: "Amina",
+      lastName: "Ali",
+      email: "amina@example.com",
+      password: "studentpass123",
+      role: "Student",
+      competitionCode: "BDR-101",
+      publicLeaderboardOptIn: false,
     });
-    student.points = 125;
-    student.avatar = "https://example.com/avatar.png";
-    student.badges = [
-      {
-        badgeId: badge._id,
-        awardedBy: teacher._id,
-      },
-    ];
-    student.publicLeaderboardOptIn = true;
-    await student.save();
+    const second = await User.create({
+      firstName: "Omar",
+      lastName: "Hassan",
+      email: "omar@example.com",
+      password: "studentpass123",
+      role: "Student",
+      competitionCode: "BDR-102",
+      publicLeaderboardOptIn: true,
+    });
+    const evaluationFields = {
+      teacherId: teacher._id,
+      evaluatedBy: { teacherId: teacher._id, name: "Teacher User" },
+      maxScore: 100,
+    };
+    await SardEvaluation.create({
+      studentId: first._id,
+      ...evaluationFields,
+      alertCount: 2,
+      alertPenalty: 5,
+    });
+    await SardEvaluation.create({
+      studentId: second._id,
+      ...evaluationFields,
+      alertCount: 1,
+      alertPenalty: 5,
+    });
 
-    const studentsResponse = await request(app).get(
-      "/api/leaderboard/students",
-    );
+    const leaderboardResponse = await request(app).get("/api/leaderboard");
 
-    expect(studentsResponse.status).toBe(200);
-    expect(studentsResponse.body.leaderboard).toEqual([
+    expect(leaderboardResponse.status).toBe(200);
+    expect(leaderboardResponse.body.leaderboard).toEqual([
       {
         rank: 1,
-        firstName: "Student",
-        lastName: "User",
-        points: 125,
-        avatar: "https://example.com/avatar.png",
-        badges: [{ name: "قارئ متميز", icon: "🌟" }],
+        firstName: "Omar",
+        lastName: "Hassan",
+        competitionCode: "BDR-102",
+        finalScore: 95,
+        maxScore: 100,
+        evaluatedBy: "Teacher User",
+      },
+      {
+        rank: 2,
+        firstName: "Amina",
+        lastName: "Ali",
+        competitionCode: "BDR-101",
+        finalScore: 90,
+        maxScore: 100,
+        evaluatedBy: "Teacher User",
       },
     ]);
-    const responseJson = JSON.stringify(studentsResponse.body);
-    expect(responseJson).not.toContain(student.email);
-    expect(responseJson).not.toContain(student._id.toString());
+    const responseJson = JSON.stringify(leaderboardResponse.body);
+    expect(responseJson).not.toContain(first.email);
+    expect(responseJson).not.toContain(second.email);
+    expect(responseJson).not.toContain(first._id.toString());
     expect(responseJson).not.toContain(teacher._id.toString());
-    expect(responseJson).not.toContain("Private badge description");
   });
 
   it("keeps group rankings protected", async () => {

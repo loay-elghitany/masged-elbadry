@@ -20,21 +20,15 @@ beforeEach(() => {
 
 test("teacher submits a daily evaluation and sees success feedback", async () => {
   api.get.mockImplementation((url) => {
-    if (url === "/teacher/dashboard") {
+    if (url === "/teacher/students-with-evaluations") {
       return Promise.resolve({
         data: {
-          groups: [
+          students: [
             {
-              _id: "group1",
-              name: "حلقة الفجر",
-              studentIds: [
-                {
-                  _id: "student1",
-                  firstName: "Ali",
-                  lastName: "Ahmed",
-                  evaluationStreak: { count: 2 },
-                },
-              ],
+              _id: "student1",
+              firstName: "Ali",
+              lastName: "Ahmed",
+              evaluationStreak: { count: 2 },
             },
           ],
         },
@@ -69,9 +63,9 @@ test("teacher submits a daily evaluation and sees success feedback", async () =>
   expect(await screen.findByText("لوحة تحكم المعلم")).toBeInTheDocument();
   expect(screen.getByText("Ali Ahmed")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: /إضافة تقييم اليوم/i }));
+  fireEvent.click(screen.getByRole("button", { name: "إضافة تقييم يومي" }));
 
-  expect(screen.getByText(/إضافة تقييم يومي/i)).toBeInTheDocument();
+  expect(screen.getAllByText(/إضافة تقييم يومي/i).length).toBeGreaterThan(0);
 
   fireEvent.change(screen.getByPlaceholderText(/مثال: الفاتحة/i), {
     target: { value: "البقرة" },
@@ -82,19 +76,21 @@ test("teacher submits a daily evaluation and sees success feedback", async () =>
   await waitFor(() => {
     expect(api.post).toHaveBeenCalledWith(
       "/teacher/evaluations",
-      expect.any(FormData),
       expect.objectContaining({
-        headers: expect.objectContaining({
-          "Content-Type": "multipart/form-data",
-        }),
+        studentId: "student1",
+        memorizationFrom: "البقرة",
+        attendanceStatus: "حاضر",
       }),
+      undefined,
     );
   });
 
   expect(
     await screen.findByText("تم حفظ التقييم اليومي بنجاح."),
   ).toBeInTheDocument();
-  expect(screen.queryByText(/إضافة تقييم يومي/i)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /حفظ التقييم/i }),
+  ).not.toBeInTheDocument();
 });
 
 test("sard evaluation keeps the active contestant and tags mistakes with the last counter category", async () => {
@@ -145,7 +141,7 @@ test("sard evaluation keeps the active contestant and tags mistakes with the las
   fireEvent.change(screen.getByLabelText("البحث بكود المسابقة أو اسم الطالب"), {
     target: { value: "105" },
   });
-  fireEvent.change(screen.getByLabelText("المتسابق المعين لك"), {
+  fireEvent.change(screen.getByLabelText("المتسابق المسجل في المسابقة"), {
     target: { value: "contestant-1" },
   });
 

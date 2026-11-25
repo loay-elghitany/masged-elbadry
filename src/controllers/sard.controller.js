@@ -22,35 +22,17 @@ const getSettings = async () => {
 };
 
 const registerSardStudent = async (req, res, next) => {
-  let student;
+  const students = [];
   let parent;
   try {
     const {
-      studentName,
-      ageOrGrade,
-      talent,
-      studentEmail,
-      studentPassword,
+      children,
       parentName,
       parentPhone,
-      parentEmail,
       parentPassword,
     } = req.body;
-    const [studentFirstName, ...studentLastParts] = studentName.trim().split(/\s+/);
     const [parentFirstName, ...parentLastParts] = parentName.trim().split(/\s+/);
-    const studentLastName = studentLastParts.join(" ") || studentFirstName;
     const parentLastName = parentLastParts.join(" ") || parentFirstName;
-
-    if (
-      await User.exists({
-        email: { $in: [studentEmail.toLowerCase(), parentEmail.toLowerCase()] },
-      })
-    ) {
-      return res.status(409).json({
-        success: false,
-        message: "البريد الإلكتروني للطالب أو ولي الأمر مسجل بالفعل.",
-      });
-    }
 
     try {
       await Sequence.updateOne(
@@ -67,58 +49,119 @@ const registerSardStudent = async (req, res, next) => {
     } catch (error) {
       if (error.code !== 11000) throw error;
     }
-    const sequence = await Sequence.findOneAndUpdate(
-      { _id: "sard-registration" },
-      { $inc: { value: 1 } },
-      { new: true },
+    const registeredChildren = [];
+    for (const child of children) {
+      const sequence = await Sequence.findOneAndUpdate(
+        { _id: "sard-registration" },
+        { $inc: { value: 1 } },
+        { new: true },
+      );
+      const competitionCode = `BDR-${sequence.value}`;
+      const [firstName, ...lastParts] = child.childName.trim().split(/\s+/);
+      const lastName = lastParts.join(" ") || firstName;
+      const sanitizedFirstName =
+        firstName
+          .normalize("NFKD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, ".")
+          .replace(/^\.+|\.+$/g, "") || "student";
+      let studentEmail = `${sanitizedFirstName}.${sequence.value}@albadri.local`;
+      let emailSuffix = 1;
+      while (await User.exists({ email: studentEmail })) {
+        studentEmail = `${sanitizedFirstName}.${sequence.value}.${emailSuffix}@albadri.local`;
+        emailSuffix += 1;
+      }
+
+      const sharedPassword =
+        parentPassword ||
+        (parentPhone.length >= 8 ? parentPhone : `Sard@${sequence.value}`);
+      const student = await User.create({
+        firstName,
+        lastName,
+        email: studentEmail,
+        password: sharedPassword,
+        role: "Student",
+        competitionCode,
+        ageOrGrade: child.ageOrGrade,
+        parentPhone,
+      });
+      students.push(student);
+      registeredChildren.push({
+        childName: `${firstName} ${lastName}`.trim(),
+        sardCode: competitionCode,
+        email: studentEmail,
+        password: sharedPassword,
+        id: student._id,
+      });
+    }
+
+    const parentPhoneSlug =
+      parentPhone.replace(/[^a-zA-Z0-9]+/g, "") ||
+      registeredChildren[0].sardCode.replace("BDR-", "");
+    const baseParentEmail = `parent.${parentPhoneSlug}@albadri.local`.toLowerCase();
+    const sharedPassword =
+      parentPassword ||
+      (parentPhone.length >= 8
+        ? parentPhone
+        : `Sard@${registeredChildren[0].sardCode.replace("BDR-", "")}`);
+    for (let suffix = 0; suffix < 100; suffix += 1) {
+      const email =
+        suffix === 0
+          ? baseParentEmail
+          : `parent.${parentPhoneSlug}.${suffix}@albadri.local`.toLowerCase();
+      if (await User.exists({ email })) continue;
+      try {
+        parent = await User.create({
+          firstName: parentFirstName,
+          lastName: parentLastName,
+          email,
+          password: sharedPassword,
+          role: "Parent",
+          phone: parentPhone,
+          childrenIds: students.map((student) => student._id),
+        });
+        break;
+      } catch (error) {
+        if (
+          error.code === 11000 &&
+          (error.keyPattern?.email || error.message.includes("email_1"))
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    if (!parent) throw new Error("Unable to generate a unique parent email.");
+
+    await User.updateMany(
+      { _id: { $in: students.map((student) => student._id) } },
+      { $set: { parentId: parent._id } },
     );
-    const competitionCode = `BDR-${sequence.value}`;
-
-    student = await User.create({
-      firstName: studentFirstName,
-      lastName: studentLastName,
-      email: studentEmail,
-      password: studentPassword,
-      role: "Student",
-      competitionCode,
-      ageOrGrade,
-      talent,
-      parentPhone,
-    });
-
-    parent = await User.create({
-      firstName: parentFirstName,
-      lastName: parentLastName,
-      email: parentEmail,
-      password: parentPassword,
-      role: "Parent",
-      phone: parentPhone,
-      childrenIds: [student._id],
-    });
-
-    student.parentId = parent._id;
-    await student.save();
 
     return res.status(201).json({
       success: true,
       message: "تم التسجيل في تحدي سرد جزء عمّ بنجاح.",
-      competitionCode,
+      competitionCode: registeredChildren[0].sardCode,
+      children: registeredChildren,
       student: {
-        id: student._id,
-        fullName: `${student.firstName} ${student.lastName}`,
-        email: studentEmail,
-        password: studentPassword,
+        id: students[0]._id,
+        fullName: registeredChildren[0].childName,
+        email: registeredChildren[0].email,
+        password: registeredChildren[0].password,
       },
       parent: {
         id: parent._id,
         fullName: `${parent.firstName} ${parent.lastName}`,
-        email: parentEmail,
-        password: parentPassword,
+        email: parent.email,
+        password: sharedPassword,
       },
     });
   } catch (error) {
     if (parent) await User.deleteOne({ _id: parent._id });
-    if (student) await User.deleteOne({ _id: student._id });
+    if (students.length) {
+      await User.deleteMany({ _id: { $in: students.map((student) => student._id) } });
+    }
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -169,6 +212,7 @@ const getSardLeaderboard = async (req, res, next) => {
     })
       .select("firstName lastName email competitionCode parentPhone talent assignedCommittee teacherId parentId")
       .populate("teacherId", "firstName lastName")
+      .populate("parentId", "firstName lastName phone")
       .sort({ competitionCode: 1 })
       .lean();
     const evaluations = await SardEvaluation.find({
@@ -240,9 +284,8 @@ const getTeacherSardStudents = async (req, res, next) => {
     const students = await User.find({
       role: "Student",
       competitionCode: { $exists: true, $ne: "" },
-      teacherId: req.user._id,
     })
-      .select("firstName lastName competitionCode assignedCommittee")
+      .select("firstName lastName competitionCode assignedCommittee teacherId")
       .sort({ firstName: 1, lastName: 1 })
       .lean();
     return res.json({ students });
@@ -293,16 +336,20 @@ const createSardEvaluation = async (req, res, next) => {
       _id: studentId,
       role: "Student",
       competitionCode: { $exists: true },
-      teacherId: req.user._id,
     });
     if (!student) {
-      return res.status(403).json({ success: false, message: "غير مصرح بتقييم هذا المتسابق." });
+      return res.status(404).json({ success: false, message: "المتسابق غير موجود." });
     }
 
     const settings = await getSettings();
+    const teacherName = `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim();
     const evaluation = await SardEvaluation.create({
       studentId,
       teacherId: req.user._id,
+      evaluatedBy: {
+        teacherId: req.user._id,
+        name: teacherName,
+      },
       maxScore: settings.maxScore,
       hesitationCount: counts[0],
       alertCount: counts[1],
@@ -320,6 +367,8 @@ const createSardEvaluation = async (req, res, next) => {
       })),
       notes,
     });
+    student.teacherId = req.user._id;
+    await student.save();
     return res.status(201).json({ success: true, evaluation });
   } catch (error) {
     return next(error);

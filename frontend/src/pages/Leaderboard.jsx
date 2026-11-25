@@ -36,7 +36,7 @@ export default function Leaderboard() {
 
     const loadLeaderboard = async () => {
       try {
-        const studentsResponse = await api.get("/leaderboard/students");
+        const studentsResponse = await api.get("/leaderboard");
         setStudents(studentsResponse.data.leaderboard || []);
         if (hasSession) {
           const groupsResponse = await api.get("/leaderboard/groups");
@@ -86,8 +86,7 @@ export default function Leaderboard() {
               </p>
               <h1 className="mt-2 text-4xl font-semibold">قائمة المتصدرين</h1>
               <p className="mt-3 max-w-2xl text-sm text-quran-100">
-                تتبع أفضل الطلاب والمجموعات في الأكاديمية وفقًا للنقاط المكتسبة
-                من التقييمات اليومية والأنشطة.
+                ترتيب متسابقي تحدي سرد جزء عمّ وفقاً لآخر نتيجة تقييم مسجلة.
               </p>
             </div>
             {isGuest ? (
@@ -155,11 +154,10 @@ export default function Leaderboard() {
                 <section className="rounded-[2rem] bg-white p-8 shadow-sm border border-slate-200">
                   <div className="mb-6 flex flex-col gap-2 text-center">
                     <h2 className="text-3xl font-semibold text-slate-900">
-                      فرسان الأكاديمية
+                      المتسابقون المقيّمون
                     </h2>
                     <p className="text-sm text-slate-500">
-                      أفضل 10 طلاب وافقوا على مشاركة أسمائهم وإنجازاتهم في
-                      لوحة الشرف.
+                      تظهر هنا جميع نتائج المتسابقين الذين تم تقييمهم، مرتبة حسب الدرجة النهائية.
                     </p>
                   </div>
                   <div className="space-y-4">
@@ -177,42 +175,22 @@ export default function Leaderboard() {
                             <div className="text-3xl">
                               {medals[index] || `#${index + 1}`}
                             </div>
-                            <div className="flex items-center gap-3">
-                              {student.avatar ? (
-                                <img
-                                  src={student.avatar}
-                                  alt=""
-                                  className="h-12 w-12 rounded-full object-cover"
-                                />
-                              ) : (
-                                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-quran-100 font-bold text-quran-800">
-                                  {student.firstName?.charAt(0)}
-                                </span>
+                            <div>
+                              <p className="text-sm text-slate-500">
+                                المركز {formatNumber(student.rank)} · {student.competitionCode}
+                              </p>
+                              <p className="text-lg font-semibold text-slate-900">
+                                {student.firstName} {student.lastName}
+                              </p>
+                              {student.evaluatedBy && (
+                                <p className="mt-1 text-sm text-slate-600">
+                                  المعلم المُقيِّم: {student.evaluatedBy}
+                                </p>
                               )}
-                              <div>
-                                <p className="text-sm text-slate-500">
-                                  المركز {formatNumber(student.rank)}
-                                </p>
-                                <p className="text-lg font-semibold text-slate-900">
-                                  {student.firstName} {student.lastName}
-                                </p>
-                                {student.badges?.length > 0 && (
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {student.badges.map((badge, badgeIndex) => (
-                                      <span
-                                        key={`${student.rank}-${badgeIndex}`}
-                                        className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800"
-                                      >
-                                        {badge.icon} {badge.name}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
                             </div>
                           </div>
                           <div className="rounded-3xl bg-quran-100 px-4 py-3 text-right text-sm font-semibold text-quran-800">
-                            {formatNumber(student.points)} نقطة
+                            {formatNumber(student.finalScore)} / {formatNumber(student.maxScore)}
                           </div>
                         </div>
                       ))

@@ -24,9 +24,6 @@ export default function ParentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedChild, setSelectedChild] = useState(null);
-  const [leaderboardConsentUpdating, setLeaderboardConsentUpdating] =
-    useState({});
-  const [leaderboardConsentErrors, setLeaderboardConsentErrors] = useState({});
 
   useEffect(() => {
     const userData = localStorage.getItem("user");
@@ -97,50 +94,6 @@ export default function ParentDashboard() {
 
   const closeChildModal = () => {
     setSelectedChild(null);
-  };
-
-  const handleChildLeaderboardConsentChange = async (child, enabled) => {
-    setLeaderboardConsentUpdating((current) => ({
-      ...current,
-      [child._id]: true,
-    }));
-    setLeaderboardConsentErrors((current) => ({
-      ...current,
-      [child._id]: "",
-    }));
-
-    try {
-      const response = await api.patch(
-        `/parent/children/${child._id}/public-leaderboard-consent`,
-        { enabled },
-      );
-      setDashboard((current) => ({
-        ...current,
-        children: current.children.map((currentChild) =>
-          currentChild._id === child._id
-            ? {
-                ...currentChild,
-                publicLeaderboardOptIn:
-                  response.data.publicLeaderboardOptIn,
-              }
-            : currentChild,
-        ),
-      }));
-    } catch (requestError) {
-      console.error("Failed to update child leaderboard consent:", requestError);
-      setLeaderboardConsentErrors((current) => ({
-        ...current,
-        [child._id]: getApiErrorMessage(
-          requestError,
-          "تعذر تحديث الموافقة. حاول مرة أخرى.",
-        ),
-      }));
-    } finally {
-      setLeaderboardConsentUpdating((current) => ({
-        ...current,
-        [child._id]: false,
-      }));
-    }
   };
 
   if (loading) {
@@ -371,9 +324,9 @@ export default function ParentDashboard() {
                                 <p>فتح المعلم: <b>{child.sardEvaluation.correctionCount}</b></p>
                               </div>
                               <p className="mt-3 text-sm text-slate-600">
-                                الشيخ المقيّم: {child.sardEvaluation.teacherId
+                                المعلم المُقيِّم: {child.sardEvaluation.evaluatedBy?.name || (child.sardEvaluation.teacherId
                                   ? `${child.sardEvaluation.teacherId.firstName} ${child.sardEvaluation.teacherId.lastName}`
-                                  : "غير محدد"}
+                                  : "غير محدد")}
                               </p>
                               <div className="mt-3 text-sm">
                                 <p className="font-bold text-slate-700">تفاصيل مواضع التقييم والأخطاء</p>
@@ -394,36 +347,6 @@ export default function ParentDashboard() {
                           ) : <p className="mt-2 text-sm text-slate-600">لم يتم تسجيل نتيجة للتحدي بعد.</p>}
                         </section>
                       )}
-                      <div className="rounded-2xl border border-emerald-100 bg-white p-4">
-                        <label className="flex cursor-pointer items-start gap-3">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(child.publicLeaderboardOptIn)}
-                            disabled={leaderboardConsentUpdating[child._id]}
-                            onChange={(event) =>
-                              handleChildLeaderboardConsentChange(
-                                child,
-                                event.target.checked,
-                              )
-                            }
-                            className="mt-1 h-5 w-5 accent-emerald-700"
-                          />
-                          <span>
-                            <span className="block text-sm font-semibold text-slate-900">
-                              أوافق على ظهور الطالب في لوحة الشرف العامة
-                            </span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">
-                              سيظهر اسمه وصورته الرمزية ونقاطه وأوسمته للزوار.
-                              يمكن إلغاء الموافقة في أي وقت.
-                            </span>
-                          </span>
-                        </label>
-                        {leaderboardConsentErrors[child._id] && (
-                          <p role="alert" className="mt-2 text-sm text-rose-700">
-                            {leaderboardConsentErrors[child._id]}
-                          </p>
-                        )}
-                      </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="rounded-3xl bg-white p-4 text-sm text-slate-700 shadow-sm">
                           <p className="text-slate-500">المعلم</p>

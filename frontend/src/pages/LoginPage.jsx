@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ export default function LoginPage() {
 
     try {
       const response = await api.post("/auth/login", {
-        email,
+        identifier,
         password,
       });
 
@@ -63,20 +63,20 @@ export default function LoginPage() {
           onSubmit={handleSubmit}
           className="bg-white rounded-xl shadow-lg p-8"
         >
-          {/* Email Input */}
+          {/* Account identifier */}
           <div className="mb-6">
             <label
-              htmlFor="email"
+              htmlFor="identifier"
               className="block text-sm font-semibold text-gray-700 mb-2"
             >
-              عنوان البريد الإلكتروني
+              البريد الإلكتروني أو رقم الهاتف أو كود المسابقة
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              id="identifier"
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="you@example.com أو 010... أو BDR-101"
               required
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-quran-500 focus:border-transparent"
             />

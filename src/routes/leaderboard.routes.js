@@ -8,6 +8,7 @@ const {
 
 const router = express.Router();
 
+router.get("/", getTopStudents);
 router.get("/students", getTopStudents);
 
 router.use(authMiddleware);

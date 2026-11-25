@@ -18,15 +18,10 @@ const makeToken = (user) =>
   );
 
 const registration = (overrides = {}) => ({
-  studentName: "Yusuf Ahmed",
-  ageOrGrade: "12 سنة",
-  talent: "الخط العربي",
-  studentEmail: "yusuf@example.com",
-  studentPassword: "studentpass123",
+  children: [{ childName: "Yusuf Ahmed", ageOrGrade: "12 سنة" }],
   parentName: "Ahmed Yusuf",
   parentPhone: "01001234567",
-  parentEmail: "ahmed@example.com",
-  parentPassword: "parentpass123",
+  parentPassword: "",
   ...overrides,
 });
 
@@ -47,33 +42,84 @@ afterAll(async () => {
 });
 
 describe("Juz Amma recitation competition", () => {
-  it("registers linked parent and student accounts and issues sequential codes", async () => {
+  it("creates multiple linked child accounts with sequential codes and unique internal emails", async () => {
     const [first, second] = await Promise.all([
-      request(app).post("/api/public/sard-register").send(registration()),
-      request(app)
-        .post("/api/public/sard-register")
-        .send(
+      request(app).post("/api/sard/register").send(
         registration({
-          studentEmail: "student2@example.com",
-          parentEmail: "parent2@example.com",
+          children: [
+            { childName: "Yusuf Ahmed", ageOrGrade: "12 سنة" },
+            { childName: "Yusuf Ali", ageOrGrade: "10 سنة" },
+          ],
         }),
-        ),
+      ),
+      request(app).post("/api/public/sard-register").send(
+        registration({
+          parentName: "Mona Ali",
+          parentPhone: "01001234568",
+          children: [{ childName: "Yusuf Omar", ageOrGrade: "8 سنة" }],
+        }),
+      ),
     ]);
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
-    expect(
-      [first.body.competitionCode, second.body.competitionCode].sort(),
-    ).toEqual(["BDR-101", "BDR-102"]);
-    const student = await User.findById(first.body.student.id);
+    const codes = [...first.body.children, ...second.body.children]
+      .map((child) => child.sardCode)
+      .sort();
+    expect(codes).toEqual(["BDR-101", "BDR-102", "BDR-103"]);
+    const firstChild = first.body.children.find(
+      (child) => child.childName === "Yusuf Ahmed",
+    );
+    expect(firstChild.email).toBe(
+      `yusuf.${firstChild.sardCode.replace("BDR-", "")}@albadri.local`,
+    );
+    expect(firstChild.password).toBe("01001234567");
+    expect(first.body.children).toHaveLength(2);
+
+    const student = await User.findById(first.body.children[0].id);
     const parent = await User.findById(first.body.parent.id);
     expect(student.parentId.toString()).toBe(parent._id.toString());
-    expect(parent.childrenIds.map(String)).toContain(student._id.toString());
+    expect(parent.childrenIds.map(String)).toEqual(
+      first.body.children.map((child) => child.id),
+    );
     expect(student.teacherId).toBeFalsy();
     expect(student.parentPhone).toBe("01001234567");
+    expect(first.body.parent.email).toBe("parent.01001234567@albadri.local");
   });
 
-  it("snapshots scoring rules, calculates final score, and rejects unauthorized or invalid ayah evaluations", async () => {
+  it("handles duplicate parent phones with unique generated parent emails", async () => {
+    const first = await request(app)
+      .post("/api/sard/register")
+      .send(registration());
+    const second = await request(app)
+      .post("/api/sard/register")
+      .send(registration({ children: [{ childName: "Sara Yusuf", ageOrGrade: "9 سنة" }] }));
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.parent.email).not.toBe(first.body.parent.email);
+    expect(await User.countDocuments({ role: "Parent" })).toBe(2);
+  });
+
+  it("supports sign-in by child code and parent phone", async () => {
+    const registered = await request(app)
+      .post("/api/sard/register")
+      .send(registration());
+    const childLogin = await request(app)
+      .post("/api/auth/login")
+      .send({ identifier: "BDR-101", password: "01001234567" });
+    const parentLogin = await request(app)
+      .post("/api/auth/login")
+      .send({ identifier: "01001234567", password: "01001234567" });
+
+    expect(registered.status).toBe(201);
+    expect(childLogin.status).toBe(200);
+    expect(childLogin.body.user.role).toBe("Student");
+    expect(parentLogin.status).toBe(200);
+    expect(parentLogin.body.user.role).toBe("Parent");
+  });
+
+  it("allows teachers to find and evaluate any Sard contestant and records evaluator identity", async () => {
     const admin = await User.create({
       firstName: "Admin",
       lastName: "Sard",
@@ -88,16 +134,17 @@ describe("Juz Amma recitation competition", () => {
       password: "teacherpass123",
       role: "Teacher",
     });
-    const otherTeacher = await User.create({
-      firstName: "Other",
-      lastName: "Teacher",
-      email: "other@example.com",
-      password: "teacherpass123",
-      role: "Teacher",
-    });
     const registered = await request(app)
-      .post("/api/public/sard-register")
+      .post("/api/sard/register")
       .send(registration());
+    const studentId = registered.body.student.id;
+    const token = makeToken(teacher);
+
+    const listResponse = await request(app)
+      .get("/api/teacher/sard/students")
+      .set("Authorization", `Bearer ${token}`);
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.students.map((student) => student._id)).toContain(studentId);
 
     const savedSettings = await request(app)
       .put("/api/admin/sard/settings")
@@ -110,22 +157,9 @@ describe("Juz Amma recitation competition", () => {
       });
     expect(savedSettings.status).toBe(200);
 
-    const studentId = registered.body.student.id;
-    const assignment = await request(app)
-      .put(`/api/admin/sard/students/${studentId}/committee`)
-      .set("Authorization", `Bearer ${makeToken(admin)}`)
-      .send({ assignedCommittee: "قاعة النور", teacherId: teacher._id });
-    expect(assignment.status).toBe(200);
-
-    const denied = await request(app)
-      .post("/api/teacher/sard-evaluations")
-      .set("Authorization", `Bearer ${makeToken(otherTeacher)}`)
-      .send({ studentId, alertCount: 1 });
-    expect(denied.status).toBe(403);
-
     const invalidAyah = await request(app)
       .post("/api/teacher/sard-evaluations")
-      .set("Authorization", `Bearer ${makeToken(teacher)}`)
+      .set("Authorization", `Bearer ${token}`)
       .send({
         studentId,
         mistakes: [{ surahName: "النبأ", ayahNumber: 41 }],
@@ -134,7 +168,7 @@ describe("Juz Amma recitation competition", () => {
 
     const invalidType = await request(app)
       .post("/api/teacher/sard-evaluations")
-      .set("Authorization", `Bearer ${makeToken(teacher)}`)
+      .set("Authorization", `Bearer ${token}`)
       .send({
         studentId,
         mistakes: [{ surahName: "النبأ", ayahNumber: 25, type: "unknown" }],
@@ -143,7 +177,7 @@ describe("Juz Amma recitation competition", () => {
 
     const evaluationResponse = await request(app)
       .post("/api/teacher/sard-evaluations")
-      .set("Authorization", `Bearer ${makeToken(teacher)}`)
+      .set("Authorization", `Bearer ${token}`)
       .send({
         studentId,
         hesitationCount: 3,
@@ -158,6 +192,10 @@ describe("Juz Amma recitation competition", () => {
     expect(evaluationResponse.status).toBe(201);
     expect(evaluationResponse.body.evaluation.maxScore).toBe(200);
     expect(evaluationResponse.body.evaluation.finalScore).toBe(189);
+    expect(evaluationResponse.body.evaluation.evaluatedBy).toMatchObject({
+      teacherId: teacher._id.toString(),
+      name: "Sheikh Amin",
+    });
     expect(evaluationResponse.body.evaluation.mistakes[0]).toMatchObject({
       surahName: "النبأ",
       ayahNumber: 25,
@@ -174,5 +212,17 @@ describe("Juz Amma recitation competition", () => {
     expect(savedEvaluation.hesitationPenalty).toBe(1);
     expect(savedEvaluation.alertPenalty).toBe(2);
     expect(savedEvaluation.correctionPenalty).toBe(4);
+    expect((await User.findById(studentId)).teacherId.toString()).toBe(
+      teacher._id.toString(),
+    );
+
+    const leaderboard = await request(app).get("/api/leaderboard");
+    expect(leaderboard.body.leaderboard).toEqual([
+      expect.objectContaining({
+        competitionCode: "BDR-101",
+        finalScore: 189,
+        evaluatedBy: "Sheikh Amin",
+      }),
+    ]);
   });
 });

@@ -22,7 +22,7 @@ describe("LoginPage", () => {
     localStorage.clear();
   });
 
-  it("should render login form with email and password inputs", () => {
+  it("should render login form with a flexible account identifier and password", () => {
     render(
       <BrowserRouter>
         <LoginPage />
@@ -30,10 +30,10 @@ describe("LoginPage", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: /welcome back/i }),
+      screen.getByRole("heading", { name: /مرحبًا بعودتك/i }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/رقم الهاتف أو كود المسابقة/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/كلمة المرور/i)).toBeInTheDocument();
   });
 
   it("should handle successful login and save JWT token", async () => {
@@ -58,9 +58,9 @@ describe("LoginPage", () => {
       </BrowserRouter>,
     );
 
-    const emailInput = screen.getByLabelText(/email/i);
-    const passwordInput = screen.getByLabelText(/password/i);
-    const submitButton = screen.getByRole("button", { name: /login/i });
+    const emailInput = screen.getByLabelText(/رقم الهاتف أو كود المسابقة/i);
+    const passwordInput = screen.getByLabelText(/كلمة المرور/i);
+    const submitButton = screen.getByRole("button", { name: /تسجيل الدخول/i });
 
     await user.type(emailInput, "student@example.com");
     await user.type(passwordInput, "password123");
@@ -92,9 +92,9 @@ describe("LoginPage", () => {
       </BrowserRouter>,
     );
 
-    const emailInput = screen.getByLabelText(/email/i);
-    const passwordInput = screen.getByLabelText(/password/i);
-    const submitButton = screen.getByRole("button", { name: /login/i });
+    const emailInput = screen.getByLabelText(/رقم الهاتف أو كود المسابقة/i);
+    const passwordInput = screen.getByLabelText(/كلمة المرور/i);
+    const submitButton = screen.getByRole("button", { name: /تسجيل الدخول/i });
 
     await user.type(emailInput, "student@example.com");
     await user.type(passwordInput, "password123");
@@ -126,9 +126,9 @@ describe("LoginPage", () => {
       </BrowserRouter>,
     );
 
-    const emailInput = screen.getByLabelText(/email/i);
-    const passwordInput = screen.getByLabelText(/password/i);
-    const submitButton = screen.getByRole("button", { name: /login/i });
+    const emailInput = screen.getByLabelText(/رقم الهاتف أو كود المسابقة/i);
+    const passwordInput = screen.getByLabelText(/كلمة المرور/i);
+    const submitButton = screen.getByRole("button", { name: /تسجيل الدخول/i });
 
     await user.type(emailInput, "teacher@example.com");
     await user.type(passwordInput, "password123");
@@ -156,9 +156,9 @@ describe("LoginPage", () => {
       </BrowserRouter>,
     );
 
-    const submitButton = screen.getByRole("button", { name: /login/i });
-    await user.type(screen.getByLabelText(/email/i), "parent@example.com");
-    await user.type(screen.getByLabelText(/password/i), "password123");
+    const submitButton = screen.getByRole("button", { name: /تسجيل الدخول/i });
+    await user.type(screen.getByLabelText(/رقم الهاتف أو كود المسابقة/i), "parent@example.com");
+    await user.type(screen.getByLabelText(/كلمة المرور/i), "password123");
     await user.click(submitButton);
 
     await waitFor(() => {
@@ -183,9 +183,9 @@ describe("LoginPage", () => {
       </BrowserRouter>,
     );
 
-    const submitButton = screen.getByRole("button", { name: /login/i });
-    await user.type(screen.getByLabelText(/email/i), "admin@example.com");
-    await user.type(screen.getByLabelText(/password/i), "password123");
+    const submitButton = screen.getByRole("button", { name: /تسجيل الدخول/i });
+    await user.type(screen.getByLabelText(/رقم الهاتف أو كود المسابقة/i), "admin@example.com");
+    await user.type(screen.getByLabelText(/كلمة المرور/i), "password123");
     await user.click(submitButton);
 
     await waitFor(() => {
@@ -208,9 +208,9 @@ describe("LoginPage", () => {
       </BrowserRouter>,
     );
 
-    const submitButton = screen.getByRole("button", { name: /login/i });
-    await user.type(screen.getByLabelText(/email/i), "wrong@example.com");
-    await user.type(screen.getByLabelText(/password/i), "wrongpass");
+    const submitButton = screen.getByRole("button", { name: /تسجيل الدخول/i });
+    await user.type(screen.getByLabelText(/رقم الهاتف أو كود المسابقة/i), "wrong@example.com");
+    await user.type(screen.getByLabelText(/كلمة المرور/i), "wrongpass");
     await user.click(submitButton);
 
     await waitFor(() => {
@@ -237,9 +237,9 @@ describe("LoginPage", () => {
       </BrowserRouter>,
     );
 
-    const submitButton = screen.getByRole("button", { name: /login/i });
-    await user.type(screen.getByLabelText(/email/i), "test@example.com");
-    await user.type(screen.getByLabelText(/password/i), "password123");
+    const submitButton = screen.getByRole("button", { name: /تسجيل الدخول/i });
+    await user.type(screen.getByLabelText(/رقم الهاتف أو كود المسابقة/i), "test@example.com");
+    await user.type(screen.getByLabelText(/كلمة المرور/i), "password123");
     await user.click(submitButton);
 
     expect(submitButton).toBeDisabled();

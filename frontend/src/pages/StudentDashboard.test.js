@@ -51,7 +51,7 @@ beforeEach(() => {
   };
 });
 
-test("renders student dashboard with unlocked avatar and earned badges for high points", async () => {
+test("renders student dashboard details without a leaderboard opt-in control", async () => {
   api.get.mockImplementation((url) => {
     if (url === "/student/dashboard") {
       return Promise.resolve({
@@ -112,17 +112,10 @@ test("renders student dashboard with unlocked avatar and earned badges for high 
 
   expect(await screen.findByText(/إجمالي النقاط/i)).toBeInTheDocument();
   expect(screen.getByText("520")).toBeInTheDocument();
-  expect(screen.getByText(/520 نقطة - أنت قائد الآن!/i)).toBeInTheDocument();
-
-  const avatarImage = screen.getByAltText("Avatar");
-  expect(avatarImage).toHaveAttribute(
-    "src",
-    "https://api.dicebear.com/6.x/pixel-art/svg?seed=Crown",
-  );
+  expect(screen.queryByText(/لوحة الشرف العامة/)).not.toBeInTheDocument();
 
   expect(screen.getByText(/نجم الاجتهاد/i)).toBeInTheDocument();
   expect(screen.getByText(/مكافأة على الاجتهاد/i)).toBeInTheDocument();
 
-  const crownButton = screen.getByRole("button", { name: /تاج/i });
-  expect(crownButton).not.toBeDisabled();
+  expect(screen.queryByText(/لوحة الشرف العامة/)).not.toBeInTheDocument();
 });
