@@ -174,3 +174,68 @@ test("sard evaluation keeps the active contestant and tags mistakes with the las
     screen.queryByText("تردد ذاتي: سورة النبأ - آية 25"),
   ).not.toBeInTheDocument();
 });
+
+test("teacher can submit an incomplete Sard participation assessment without numeric penalties", async () => {
+  api.get.mockImplementation((url) => {
+    if (url === "/teacher/students-with-evaluations") {
+      return Promise.resolve({ data: { students: [] } });
+    }
+    if (url === "/teacher/sard/settings") {
+      return Promise.resolve({ data: { settings: { maxScore: 100 } } });
+    }
+    if (url === "/teacher/sard/students") {
+      return Promise.resolve({
+        data: {
+          students: [
+            {
+              _id: "contestant-2",
+              firstName: "Maryam",
+              lastName: "Ali",
+              competitionCode: "BDR-106",
+            },
+          ],
+        },
+      });
+    }
+    return Promise.resolve({ data: {} });
+  });
+  api.post.mockResolvedValue({ data: {} });
+
+  render(
+    <MemoryRouter>
+      <TeacherDashboard />
+    </MemoryRouter>,
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: "تقييم السرد القرآني" }));
+  await screen.findByRole("option", { name: /BDR-106/ });
+  fireEvent.change(screen.getByLabelText("المتسابق المسجل في المسابقة"), {
+    target: { value: "contestant-2" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "مشاركة تشجيعية (لم يُتمّ الجزء)" }));
+
+  expect(screen.queryByText("الدرجة الحية")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("التقدير التشجيعي"), {
+    target: { value: "جيد جداً" },
+  });
+  fireEvent.change(screen.getByLabelText("السورة التي توقف عندها (اختياري)"), {
+    target: { value: "النازعات" },
+  });
+  fireEvent.change(screen.getByLabelText("رسالة تشجيعية (اختياري)"), {
+    target: { value: "واصل المحاولة." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "حفظ المشاركة التشجيعية" }));
+
+  await waitFor(() => {
+    expect(api.post).toHaveBeenCalledWith(
+      "/teacher/sard-evaluations",
+      {
+        studentId: "contestant-2",
+        completionStatus: "incomplete",
+        encouragementGrade: "جيد جداً",
+        stoppedAtSurah: "النازعات",
+        teacherNote: "واصل المحاولة.",
+      },
+    );
+  });
+});

@@ -29,13 +29,11 @@ test("shows the Sard evaluation and evaluator name without a leaderboard opt-in 
                   evaluations: [],
                   competitionCode: "BDR-101",
                   sardEvaluation: {
-                    finalScore: 95,
-                    maxScore: 100,
-                    hesitationCount: 1,
-                    alertCount: 1,
-                    correctionCount: 0,
+                    completionStatus: "incomplete",
+                    encouragementGrade: "جيد جداً",
+                    stoppedAtSurah: "النازعات",
+                    teacherNote: "نقدّر اجتهادك.",
                     evaluatedBy: { name: "Mona Teacher" },
-                    mistakes: [],
                   },
                 },
               ],
@@ -59,8 +57,11 @@ test("shows the Sard evaluation and evaluator name without a leaderboard opt-in 
   );
 
   expect(await screen.findAllByText("Amina Ahmed")).not.toHaveLength(0);
-  expect(screen.getByText("95 / 100")).toBeInTheDocument();
+  expect(screen.getByText("تقدير: جيد جداً")).toBeInTheDocument();
+  expect(screen.getByText("السورة التي توقف عندها:")).toBeInTheDocument();
   expect(screen.getByText("المعلم المُقيِّم: Mona Teacher")).toBeInTheDocument();
+  expect(screen.getByText("نقدّر اجتهادك.")).toBeInTheDocument();
+  expect(screen.queryByText("95 / 100")).not.toBeInTheDocument();
   expect(screen.queryByText(/لوحة الشرف العامة/)).not.toBeInTheDocument();
   expect(api.get).toHaveBeenCalledWith("/parent/dashboard");
 });

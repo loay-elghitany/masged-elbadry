@@ -104,28 +104,78 @@ describe("GET /api/leaderboard", () => {
     expect(leaderboardResponse.body.leaderboard).toEqual([
       {
         rank: 1,
-        firstName: "Omar",
-        lastName: "Hassan",
-        competitionCode: "BDR-102",
-        finalScore: 95,
-        maxScore: 100,
-        evaluatedBy: "Teacher User",
+        studentName: "Omar Hassan",
+        sardCode: "BDR-102",
+        score: 95,
       },
       {
         rank: 2,
-        firstName: "Amina",
-        lastName: "Ali",
-        competitionCode: "BDR-101",
-        finalScore: 90,
-        maxScore: 100,
-        evaluatedBy: "Teacher User",
+        studentName: "Amina Ali",
+        sardCode: "BDR-101",
+        score: 90,
       },
     ]);
+    expect(leaderboardResponse.body.encouragementList).toEqual([]);
     const responseJson = JSON.stringify(leaderboardResponse.body);
     expect(responseJson).not.toContain(first.email);
     expect(responseJson).not.toContain(second.email);
     expect(responseJson).not.toContain(first._id.toString());
     expect(responseJson).not.toContain(teacher._id.toString());
+  });
+
+  it("returns incomplete evaluations in the encouragement list without ranks or numeric scores", async () => {
+    const contestants = await User.create([
+      {
+        firstName: "Zainab",
+        lastName: "Ali",
+        email: "zainab@example.com",
+        password: "studentpass123",
+        role: "Student",
+        competitionCode: "BDR-201",
+      },
+      {
+        firstName: "Hassan",
+        lastName: "Omar",
+        email: "hassan@example.com",
+        password: "studentpass123",
+        role: "Student",
+        competitionCode: "BDR-202",
+      },
+    ]);
+    await SardEvaluation.create([
+      {
+        studentId: contestants[0]._id,
+        teacherId: teacher._id,
+        evaluatedBy: { teacherId: teacher._id, name: "Teacher User" },
+        completionStatus: "incomplete",
+        encouragementGrade: "جيد",
+      },
+      {
+        studentId: contestants[1]._id,
+        teacherId: teacher._id,
+        evaluatedBy: { teacherId: teacher._id, name: "Teacher User" },
+        completionStatus: "incomplete",
+        encouragementGrade: "ممتاز",
+        stoppedAtSurah: "النبأ",
+      },
+    ]);
+
+    const response = await request(app).get("/api/leaderboard");
+
+    expect(response.body.leaderboard).toEqual([]);
+    expect(response.body.encouragementList).toEqual([
+      {
+        studentName: "Hassan Omar",
+        sardCode: "BDR-202",
+        encouragementGrade: "ممتاز",
+        stoppedAtSurah: "النبأ",
+      },
+      {
+        studentName: "Zainab Ali",
+        sardCode: "BDR-201",
+        encouragementGrade: "جيد",
+      },
+    ]);
   });
 
   it("keeps group rankings protected", async () => {

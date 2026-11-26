@@ -11,9 +11,13 @@ export default function Leaderboard() {
   const [user, setUser] = useState(null);
   const [isGuest, setIsGuest] = useState(true);
   const [students, setStudents] = useState([]);
+  const [encouragementList, setEncouragementList] = useState([]);
   const [groupsLeaderboard, setGroupsLeaderboard] = useState([]);
   const [activeLeaderboardTab, setActiveLeaderboardTab] =
     useState("individual");
+  const [activeIndividualTab, setActiveIndividualTab] = useState("completed");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [visiblePage, setVisiblePage] = useState(1);
   const [expandedGroups, setExpandedGroups] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -38,6 +42,7 @@ export default function Leaderboard() {
       try {
         const studentsResponse = await api.get("/leaderboard");
         setStudents(studentsResponse.data.leaderboard || []);
+        setEncouragementList(studentsResponse.data.encouragementList || []);
         if (hasSession) {
           const groupsResponse = await api.get("/leaderboard/groups");
           setGroupsLeaderboard(groupsResponse.data.groupsLeaderboard || []);
@@ -56,6 +61,14 @@ export default function Leaderboard() {
   const toggleGroupExpand = (groupId) => {
     setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   };
+  const activeParticipants =
+    activeIndividualTab === "completed" ? students : encouragementList;
+  const filteredParticipants = activeParticipants.filter((participant) =>
+    `${participant.studentName} ${participant.sardCode}`
+      .toLocaleLowerCase()
+      .includes(searchQuery.trim().toLocaleLowerCase()),
+  );
+  const visibleParticipants = filteredParticipants.slice(0, visiblePage * 15);
 
   if (loading) {
     return (
@@ -150,52 +163,119 @@ export default function Leaderboard() {
         ) : (
           <>
             {activeLeaderboardTab === "individual" && (
-              <div className="mx-auto max-w-3xl">
-                <section className="rounded-[2rem] bg-white p-8 shadow-sm border border-slate-200">
-                  <div className="mb-6 flex flex-col gap-2 text-center">
-                    <h2 className="text-3xl font-semibold text-slate-900">
-                      المتسابقون المقيّمون
-                    </h2>
-                    <p className="text-sm text-slate-500">
-                      تظهر هنا جميع نتائج المتسابقين الذين تم تقييمهم، مرتبة حسب الدرجة النهائية.
-                    </p>
+              <div className="mx-auto max-w-5xl space-y-6">
+                {students.length > 0 && (
+                  <section aria-label="منصة أبطال السرد الكامل" className="rounded-[2rem] border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-emerald-50 p-6 shadow-sm sm:p-8">
+                    <div className="mb-5 text-center">
+                      <p className="text-sm font-bold text-amber-800">منصة أبطال السرد الكامل</p>
+                      <h2 className="mt-1 text-2xl font-black text-slate-900">أعلى ثلاثة متسابقين</h2>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {students.slice(0, 3).map((student, index) => (
+                        <article key={student.rank} className={`rounded-2xl border p-4 text-center ${index === 0 ? "border-amber-300 bg-amber-100/80 sm:-translate-y-1" : "border-slate-200 bg-white/80"}`}>
+                          <span className="text-3xl" aria-hidden="true">{medals[index]}</span>
+                          <p className="mt-2 font-extrabold text-slate-900">{student.studentName}</p>
+                          <p className="mt-1 text-sm text-slate-600">{student.sardCode}</p>
+                          <p className="mt-3 text-lg font-black text-emerald-800">{formatNumber(student.score)}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+                  <div className="mb-6 text-center">
+                    <h2 className="text-2xl font-black text-slate-900">متسابقو تحدي سرد جزء عمّ</h2>
+                    <p className="mt-2 text-sm text-slate-500">الإنجاز يُحتفى به، والمحاولة محل تقدير.</p>
                   </div>
-                  <div className="space-y-4">
-                    {students.length === 0 ? (
-                      <div className="rounded-3xl bg-slate-50 p-10 text-center text-slate-600">
-                        لا توجد بيانات متاحة حتى الآن.
+
+                  <div role="tablist" aria-label="قوائم المتسابقين" className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5">
+                    {[
+                      ["completed", "أبطال السرد الكامل", students.length],
+                      ["incomplete", "لوحة التشجيع والمثابرة", encouragementList.length],
+                    ].map(([tab, label, count]) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        role="tab"
+                        aria-selected={activeIndividualTab === tab}
+                        onClick={() => {
+                          setActiveIndividualTab(tab);
+                          setVisiblePage(1);
+                        }}
+                        className={`rounded-xl px-3 py-3 text-sm font-extrabold transition sm:px-5 ${
+                          activeIndividualTab === tab
+                            ? "bg-white text-quran-800 shadow-sm"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        {label} <span className="mr-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs">{formatNumber(count)}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <label className="mt-5 block">
+                    <span className="sr-only">البحث باسم الطالب أو كود المسابقة</span>
+                    <input
+                      type="search"
+                      aria-label="البحث باسم الطالب أو كود المسابقة"
+                      value={searchQuery}
+                      onChange={(event) => {
+                        setSearchQuery(event.target.value);
+                        setVisiblePage(1);
+                      }}
+                      placeholder="ابحث باسم الطالب أو كود المسابقة"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-quran-500 focus:bg-white focus:ring-2 focus:ring-quran-100"
+                    />
+                  </label>
+
+                  <div className="mt-5 space-y-3">
+                    {visibleParticipants.length === 0 ? (
+                      <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-600">
+                        {searchQuery ? "لا توجد نتائج تطابق البحث." : "لا توجد بيانات في هذه القائمة حتى الآن."}
                       </div>
-                    ) : (
-                      students.map((student, index) => (
-                        <div
-                          key={student.rank}
-                          className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="text-3xl">
-                              {medals[index] || `#${index + 1}`}
-                            </div>
+                    ) : visibleParticipants.map((participant) => (
+                      activeIndividualTab === "completed" ? (
+                        <article key={participant.rank} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-11 min-w-11 items-center justify-center rounded-full bg-quran-100 px-2 font-black text-quran-800">
+                              {formatNumber(participant.rank)}
+                            </span>
                             <div>
-                              <p className="text-sm text-slate-500">
-                                المركز {formatNumber(student.rank)} · {student.competitionCode}
-                              </p>
-                              <p className="text-lg font-semibold text-slate-900">
-                                {student.firstName} {student.lastName}
-                              </p>
-                              {student.evaluatedBy && (
-                                <p className="mt-1 text-sm text-slate-600">
-                                  المعلم المُقيِّم: {student.evaluatedBy}
-                                </p>
-                              )}
+                              <p className="font-extrabold text-slate-900">{participant.studentName}</p>
+                              <p className="mt-1 text-sm text-slate-500">{participant.sardCode}</p>
                             </div>
                           </div>
-                          <div className="rounded-3xl bg-quran-100 px-4 py-3 text-right text-sm font-semibold text-quran-800">
-                            {formatNumber(student.finalScore)} / {formatNumber(student.maxScore)}
+                          <p className="rounded-xl bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">
+                            {formatNumber(participant.score)} درجة
+                          </p>
+                        </article>
+                      ) : (
+                        <article key={participant.sardCode} className="flex flex-col gap-3 rounded-2xl border border-amber-100 bg-gradient-to-l from-amber-50/80 to-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="font-extrabold text-slate-900">{participant.studentName}</p>
+                            <p className="mt-1 text-sm text-slate-500">{participant.sardCode}</p>
+                            {participant.stoppedAtSurah && (
+                              <p className="mt-2 text-sm text-slate-600">توقف عند سورة {participant.stoppedAtSurah}</p>
+                            )}
                           </div>
-                        </div>
-                      ))
-                    )}
+                          <span className="w-fit rounded-full border border-amber-200 bg-amber-100 px-4 py-2 text-sm font-extrabold text-amber-900">
+                            {participant.encouragementGrade}
+                          </span>
+                        </article>
+                      )
+                    ))}
                   </div>
+
+                  {visibleParticipants.length < filteredParticipants.length && (
+                    <button
+                      type="button"
+                      onClick={() => setVisiblePage((page) => page + 1)}
+                      className="mt-5 w-full rounded-2xl border border-quran-200 bg-quran-50 px-5 py-3 text-sm font-extrabold text-quran-800 transition hover:bg-quran-100"
+                    >
+                      عرض المزيد ({formatNumber(filteredParticipants.length - visibleParticipants.length)})
+                    </button>
+                  )}
                 </section>
               </div>
             )}

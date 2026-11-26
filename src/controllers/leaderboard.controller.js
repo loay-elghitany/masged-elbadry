@@ -17,7 +17,9 @@ const getTopStudents = async (req, res) => {
       }
       latestByStudent.set(student._id.toString(), { evaluation, student });
     }
-    const leaderboard = [...latestByStudent.values()]
+    const latestEvaluations = [...latestByStudent.values()];
+    const leaderboard = latestEvaluations
+      .filter(({ evaluation }) => evaluation.completionStatus !== "incomplete")
       .sort(
         (first, second) =>
           second.evaluation.finalScore - first.evaluation.finalScore ||
@@ -25,19 +27,27 @@ const getTopStudents = async (req, res) => {
       )
       .map(({ evaluation, student }, index) => ({
         rank: index + 1,
-        firstName: student.firstName,
-        lastName: student.lastName,
-        competitionCode: student.competitionCode,
-        finalScore: evaluation.finalScore,
-        maxScore: evaluation.maxScore,
-        evaluatedBy:
-          evaluation.evaluatedBy?.name ||
-          (evaluation.teacherId
-            ? `${evaluation.teacherId.firstName || ""} ${evaluation.teacherId.lastName || ""}`.trim()
-            : ""),
+        studentName: `${student.firstName} ${student.lastName}`.trim(),
+        sardCode: student.competitionCode,
+        score: evaluation.finalScore,
+      }));
+    const gradeOrder = ["ممتاز", "جيد جداً", "جيد", "مقبول"];
+    const encouragementList = latestEvaluations
+      .filter(({ evaluation }) => evaluation.completionStatus === "incomplete")
+      .sort(
+        (first, second) =>
+          gradeOrder.indexOf(first.evaluation.encouragementGrade) -
+            gradeOrder.indexOf(second.evaluation.encouragementGrade) ||
+          new Date(first.evaluation.createdAt) - new Date(second.evaluation.createdAt),
+      )
+      .map(({ evaluation, student }) => ({
+        studentName: `${student.firstName} ${student.lastName}`.trim(),
+        sardCode: student.competitionCode,
+        encouragementGrade: evaluation.encouragementGrade,
+        ...(evaluation.stoppedAtSurah ? { stoppedAtSurah: evaluation.stoppedAtSurah } : {}),
       }));
 
-    res.json({ success: true, leaderboard });
+    res.json({ success: true, leaderboard, encouragementList });
   } catch (error) {
     console.error(error);
     res.status(500).json({

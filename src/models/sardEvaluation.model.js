@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 
 const { Schema } = mongoose;
 
+const encouragementGrades = ["ممتاز", "جيد جداً", "جيد", "مقبول"];
+
 const SardEvaluationSchema = new Schema({
   studentId: {
     type: Schema.Types.ObjectId,
@@ -25,9 +27,28 @@ const SardEvaluationSchema = new Schema({
       trim: true,
     },
   },
+  completionStatus: {
+    type: String,
+    enum: ["completed", "incomplete"],
+    default: "completed",
+  },
+  encouragementGrade: {
+    type: String,
+    enum: [...encouragementGrades, null],
+    default: null,
+  },
+  stoppedAtSurah: {
+    type: String,
+    trim: true,
+  },
+  teacherNote: {
+    type: String,
+    trim: true,
+    maxlength: 2000,
+  },
   maxScore: {
     type: Number,
-    required: true,
+    default: null,
     min: 1,
   },
   hesitationCount: { type: Number, default: 0, min: 0 },
@@ -38,7 +59,7 @@ const SardEvaluationSchema = new Schema({
   correctionPenalty: { type: Number, default: 6, min: 0 },
   finalScore: {
     type: Number,
-    required: true,
+    default: null,
     min: 0,
   },
   mistakes: [
@@ -63,6 +84,12 @@ const SardEvaluationSchema = new Schema({
 });
 
 SardEvaluationSchema.pre("validate", function () {
+  if (this.completionStatus === "incomplete") {
+    this.maxScore = null;
+    this.finalScore = null;
+    return;
+  }
+
   this.finalScore = Math.max(
     0,
     this.maxScore -

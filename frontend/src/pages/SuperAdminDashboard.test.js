@@ -378,5 +378,37 @@ test("searches reception contestants instantly and assigns a teacher in one sele
   expect(contestantRow).not.toBeNull();
   expect(within(contestantRow).getByText("BDR-105")).toBeInTheDocument();
   expect(within(contestantRow).getByText(/ولي الأمر: Ahmed Yusuf/)).toBeInTheDocument();
+});
+
+test("shows the Sard registration conflict message to reception", async () => {
+  const conflictMessage =
+    "رقم الهاتف مسجل بالفعل باسم ولي أمر آخر (Ahmed Yusuf). يرجى التأكد من الرقم أو التسجيل بنفس اسم ولي الأمر لإضافة أبناء جدد.";
+  api.post.mockRejectedValue({
+    response: { status: 409, data: { message: conflictMessage } },
+  });
+
+  render(
+    <MemoryRouter>
+      <SuperAdminDashboard />
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "مسابقة السرد (جزء عمّ)" }));
+
+  fireEvent.change(await screen.findByLabelText("اسم ولي الأمر"), {
+    target: { value: "Mona Ali" },
+  });
+  fireEvent.change(screen.getByLabelText("رقم الهاتف"), {
+    target: { value: "01001234567" },
+  });
+  fireEvent.change(screen.getByLabelText("اسم الابن"), {
+    target: { value: "Sara Ali" },
+  });
+  fireEvent.change(screen.getByLabelText("العمر / المرحلة"), {
+    target: { value: "9 سنوات" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "تسجيل وإصدار الأكواد" }));
+
+  expect(await screen.findAllByRole("alert")).toHaveLength(2);
+  expect(screen.getAllByRole("alert")[0]).toHaveTextContent(conflictMessage);
   expect(screen.queryByText("تعيين سريع لمعلم")).not.toBeInTheDocument();
 });

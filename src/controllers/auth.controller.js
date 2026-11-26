@@ -1,10 +1,13 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
+const normalizePhone = require("../utils/normalizePhone");
 
 const login = async (req, res, next) => {
   try {
     const { identifier, email, password } = req.body;
     const loginIdentifier = String(identifier || email || "").trim();
+    const normalizedPhone = normalizePhone(loginIdentifier);
+    const isPhoneIdentifier = normalizedPhone.replace(/\D/g, "").length >= 8;
 
     if (!loginIdentifier || !password) {
       return res.status(400).json({
@@ -19,10 +22,25 @@ const login = async (req, res, next) => {
       { phone: loginIdentifier },
       { parentPhone: loginIdentifier },
     ];
+    if (isPhoneIdentifier) {
+      lookup.push(
+        { phone: normalizedPhone },
+        { parentPhone: normalizedPhone },
+        { parentPhoneNormalized: normalizedPhone },
+      );
+    }
     if (codeDigits) lookup.push({ competitionCode: `BDR-${codeDigits}` });
     let user = null;
     if (!loginIdentifier.includes("@")) {
-      const directPhoneAccount = await User.findOne({ phone: loginIdentifier });
+      let directPhoneAccount = await User.findOne({
+        phone: isPhoneIdentifier ? normalizedPhone : loginIdentifier,
+      });
+      if (!directPhoneAccount && isPhoneIdentifier) {
+        directPhoneAccount = await User.findOne({
+          role: "Parent",
+          parentPhoneNormalized: normalizedPhone,
+        });
+      }
       if (
         directPhoneAccount &&
         (await directPhoneAccount.comparePassword(password))
@@ -37,6 +55,20 @@ const login = async (req, res, next) => {
           user = candidate;
           break;
         }
+      }
+    }
+    if (!user && isPhoneIdentifier) {
+      const legacyParents = await User.find({
+        role: "Parent",
+        parentPhoneNormalized: { $exists: false },
+        phone: { $exists: true, $ne: "" },
+      });
+      const matchingParent = legacyParents.find(
+        (candidate) =>
+          normalizePhone(candidate.phone) === normalizedPhone,
+      );
+      if (matchingParent && (await matchingParent.comparePassword(password))) {
+        user = matchingParent;
       }
     }
 

@@ -67,3 +67,26 @@ test("registers multiple children without manual email fields and displays gener
   expect(screen.getByText("BDR-102")).toBeInTheDocument();
   expect(screen.getByText("yusuf.101@albadri.local")).toBeInTheDocument();
 });
+
+test("clearly displays a registration conflict message returned by the API", async () => {
+  const user = userEvent.setup();
+  const conflictMessage =
+    "رقم الهاتف مسجل بالفعل باسم ولي أمر آخر (Ahmed Yusuf). يرجى التأكد من الرقم أو التسجيل بنفس اسم ولي الأمر لإضافة أبناء جدد.";
+  api.post.mockRejectedValue({
+    response: { status: 409, data: { message: conflictMessage } },
+  });
+
+  render(
+    <MemoryRouter>
+      <SardRegistrationPage />
+    </MemoryRouter>,
+  );
+
+  await user.type(screen.getByLabelText("اسم ولي الأمر بالكامل"), "Mona Ali");
+  await user.type(screen.getByLabelText("رقم هاتف ولي الأمر"), "01001234567");
+  await user.type(screen.getByLabelText("اسم الابن بالكامل"), "Sara Ali");
+  await user.type(screen.getByLabelText("العمر / المرحلة الدراسية"), "9 سنوات");
+  await user.click(screen.getByRole("button", { name: "تأكيد التسجيل في التحدي" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(conflictMessage);
+});

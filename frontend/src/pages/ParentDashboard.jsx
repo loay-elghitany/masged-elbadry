@@ -314,6 +314,26 @@ export default function ParentDashboard() {
                         <section className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4" aria-label={`نتيجة تحدي سرد جزء عمّ للطالب ${child.firstName}`}>
                           <h4 className="font-extrabold text-emerald-950">نتيجة تحدي سرد جزء عمّ</h4>
                           {child.sardEvaluation ? (
+                            child.sardEvaluation.completionStatus === "incomplete" ? (
+                              <div className="mt-3 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 text-amber-950">
+                                <p className="text-lg font-black">
+                                  تقدير: {child.sardEvaluation.encouragementGrade}
+                                </p>
+                                {child.sardEvaluation.stoppedAtSurah && (
+                                  <p className="mt-2 text-sm">
+                                    السورة التي توقف عندها: <b>{child.sardEvaluation.stoppedAtSurah}</b>
+                                  </p>
+                                )}
+                                <p className="mt-2 text-sm">
+                                  المعلم المُقيِّم: {child.sardEvaluation.evaluatedBy?.name || (child.sardEvaluation.teacherId
+                                    ? `${child.sardEvaluation.teacherId.firstName} ${child.sardEvaluation.teacherId.lastName}`
+                                    : "غير محدد")}
+                                </p>
+                                <p className="mt-3 text-sm font-semibold leading-7">
+                                  {child.sardEvaluation.teacherNote || "نقدّر اجتهادك ومحاولتك، واصل التدريب وستصل بإذن الله."}
+                                </p>
+                              </div>
+                            ) : (
                             <>
                               <p className="mt-2 text-2xl font-black text-emerald-800">
                                 {child.sardEvaluation.finalScore} / {child.sardEvaluation.maxScore}
@@ -344,6 +364,7 @@ export default function ParentDashboard() {
                                 ) : <p className="mt-1 text-slate-500">لا توجد مواضع مراجعة مسجلة.</p>}
                               </div>
                             </>
+                            )
                           ) : <p className="mt-2 text-sm text-slate-600">لم يتم تسجيل نتيجة للتحدي بعد.</p>}
                         </section>
                       )}

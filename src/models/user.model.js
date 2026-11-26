@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const { Schema } = mongoose;
+const normalizePhone = require("../utils/normalizePhone");
 
 const roles = ["SuperAdmin", "Teacher", "Student", "Parent"];
 
@@ -29,6 +30,10 @@ const UserSchema = new Schema({
     minlength: [8, "Password must be at least 8 characters long"],
   },
   phone: {
+    type: String,
+    trim: true,
+  },
+  parentPhoneNormalized: {
     type: String,
     trim: true,
   },
@@ -79,6 +84,10 @@ const UserSchema = new Schema({
     sparse: true,
     uppercase: true,
     trim: true,
+  },
+  sardEvaluated: {
+    type: Boolean,
+    default: false,
   },
   parentPhone: {
     type: String,
@@ -153,7 +162,29 @@ UserSchema.path("childrenIds").validate(function (value) {
   return Array.isArray(value) && value.length > 0;
 }, "Parent must have at least one child.");
 
+UserSchema.pre("validate", function () {
+  if (
+    this.role === "Parent" &&
+    (this.isNew || this.isModified("role") || this.isModified("phone"))
+  ) {
+    this.parentPhoneNormalized = this.phone
+      ? normalizePhone(this.phone)
+      : undefined;
+  }
+});
+
 UserSchema.index({ role: 1, firstName: 1 });
+UserSchema.index(
+  { parentPhoneNormalized: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      role: "Parent",
+      parentPhoneNormalized: { $type: "string" },
+    },
+    name: "unique_parent_phone_normalized",
+  },
+);
 
 UserSchema.virtual("fullName").get(function () {
   return `${this.firstName} ${this.lastName}`;

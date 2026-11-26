@@ -139,8 +139,12 @@ export default function TeacherDashboard() {
   const [sardSearch, setSardSearch] = useState("");
   const [sardStudentId, setSardStudentId] = useState("");
   const [sardLoading, setSardLoading] = useState(false);
+  const [sardSaving, setSardSaving] = useState(false);
   const [sardError, setSardError] = useState("");
   const [sardMessage, setSardMessage] = useState("");
+  const [sardCompletionStatus, setSardCompletionStatus] = useState("completed");
+  const [encouragementGrade, setEncouragementGrade] = useState("");
+  const [stoppedAtSurah, setStoppedAtSurah] = useState("");
   const [sardCounts, setSardCounts] = useState({
     hesitationCount: 0,
     alertCount: 0,
@@ -698,6 +702,8 @@ export default function TeacherDashboard() {
     setSardMistakes([]);
     setSelectedSurah("");
     setSardNotes("");
+    setEncouragementGrade("");
+    setStoppedAtSurah("");
     setLastActionType("alert");
     setSardError("");
     setSardMessage("");
@@ -717,15 +723,28 @@ export default function TeacherDashboard() {
     }
     setSardError("");
     setSardMessage("");
-    setSardLoading(true);
+    setSardSaving(true);
     try {
       await api.post("/teacher/sard-evaluations", {
         studentId: sardStudentId,
-        ...sardCounts,
-        mistakes: sardMistakes,
-        notes: sardNotes,
+        completionStatus: sardCompletionStatus,
+        ...(sardCompletionStatus === "incomplete"
+          ? {
+              encouragementGrade,
+              stoppedAtSurah: stoppedAtSurah || undefined,
+              teacherNote: sardNotes,
+            }
+          : {
+              ...sardCounts,
+              mistakes: sardMistakes,
+              notes: sardNotes,
+            }),
       });
-      setSardMessage("تم حفظ نتيجة المتسابق بنجاح.");
+      setSardMessage(
+        sardCompletionStatus === "incomplete"
+          ? "تم حفظ المشاركة التشجيعية بنجاح."
+          : "تم حفظ نتيجة المتسابق بنجاح.",
+      );
       setSardCounts({
         hesitationCount: 0,
         alertCount: 0,
@@ -734,13 +753,15 @@ export default function TeacherDashboard() {
       setSardMistakes([]);
       setSelectedSurah("");
       setSardNotes("");
+      setEncouragementGrade("");
+      setStoppedAtSurah("");
       setLastActionType("alert");
     } catch (error) {
       setSardError(
         getApiErrorMessage(error, "تعذر حفظ تقييم السرد. حاول مرة أخرى."),
       );
     } finally {
-      setSardLoading(false);
+      setSardSaving(false);
     }
   };
 
@@ -806,6 +827,33 @@ export default function TeacherDashboard() {
           <form onSubmit={submitSardEvaluation} className="mx-auto max-w-6xl space-y-6">
             {sardError && <p role="alert" className="rounded-2xl bg-rose-50 p-4 font-semibold text-rose-800">{sardError}</p>}
             {sardMessage && <p role="status" className="rounded-2xl bg-emerald-50 p-4 font-semibold text-emerald-800">{sardMessage}</p>}
+
+            <section className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm sm:p-7">
+              <p className="mb-3 text-sm font-bold text-slate-600">نوع التقييم</p>
+              <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="نوع تقييم السرد">
+                {[
+                  ["completed", "أتمّ سرد الجزء كاملاً"],
+                  ["incomplete", "مشاركة تشجيعية (لم يُتمّ الجزء)"],
+                ].map(([status, label]) => (
+                  <button
+                    key={status}
+                    type="button"
+                    aria-pressed={sardCompletionStatus === status}
+                    onClick={() => {
+                      setSardCompletionStatus(status);
+                      setSardError("");
+                    }}
+                    className={`rounded-2xl border px-4 py-4 text-sm font-extrabold transition ${
+                      sardCompletionStatus === status
+                        ? "border-emerald-700 bg-emerald-700 text-white shadow-sm"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </section>
 
             <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
               <div className="grid gap-4 md:grid-cols-2">
@@ -874,6 +922,57 @@ export default function TeacherDashboard() {
               )}
             </section>
 
+            {sardCompletionStatus === "incomplete" && (
+              <section className="space-y-5 rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm sm:p-7">
+                <div>
+                  <h2 className="text-xl font-extrabold text-amber-950">تقدير المشاركة</h2>
+                  <p className="mt-1 text-sm text-amber-900">كل محاولة مباركة، والاستمرار طريق الإتقان.</p>
+                </div>
+                <label className="block space-y-2 text-sm font-bold text-slate-700">
+                  التقدير التشجيعي
+                  <select
+                    required
+                    value={encouragementGrade}
+                    onChange={(event) => setEncouragementGrade(event.target.value)}
+                    className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-base"
+                  >
+                    <option value="">اختر التقدير</option>
+                    {["ممتاز", "جيد جداً", "جيد", "مقبول"].map((grade) => (
+                      <option key={grade} value={grade}>{grade}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-2 text-sm font-bold text-slate-700">
+                  السورة التي توقف عندها (اختياري)
+                  <select
+                    value={stoppedAtSurah}
+                    onChange={(event) => setStoppedAtSurah(event.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base"
+                  >
+                    <option value="">لم تُحدد</option>
+                    {juzAmmaSurahs.map((surah) => (
+                      <option key={surah.surahName} value={surah.surahName}>{surah.surahName}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-2 text-sm font-bold text-slate-700">
+                  رسالة تشجيعية (اختياري)
+                  <textarea
+                    value={sardNotes}
+                    onChange={(event) => setSardNotes(event.target.value)}
+                    rows="3"
+                    maxLength="2000"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 font-normal"
+                  />
+                </label>
+                <button type="submit" disabled={sardSaving || !sardStudentId} className="w-full rounded-2xl bg-amber-700 px-6 py-4 text-lg font-extrabold text-white shadow-sm hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50">
+                  {sardSaving ? "جارٍ الحفظ..." : "حفظ المشاركة التشجيعية"}
+                </button>
+              </section>
+            )}
+
+            {sardCompletionStatus === "completed" && (
+              <>
             <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
               <div className="mb-5 text-center">
                 <p className="text-sm font-bold text-slate-500">الدرجة الحية</p>
@@ -1017,10 +1116,12 @@ export default function TeacherDashboard() {
                 ملاحظات (اختياري)
                 <textarea value={sardNotes} onChange={(event) => setSardNotes(event.target.value)} rows="3" maxLength="2000" className="w-full rounded-xl border border-slate-300 px-4 py-3 font-normal" />
               </label>
-              <button type="submit" disabled={sardLoading || !sardStudentId} className="mt-5 w-full rounded-2xl bg-emerald-800 px-6 py-4 text-lg font-extrabold text-white shadow-sm hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50">
-                {sardLoading ? "جارٍ الحفظ..." : "حفظ نتيجة التقييم"}
+              <button type="submit" disabled={sardSaving || !sardStudentId} className="mt-5 w-full rounded-2xl bg-emerald-800 px-6 py-4 text-lg font-extrabold text-white shadow-sm hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50">
+                {sardSaving ? "جارٍ الحفظ..." : "حفظ نتيجة التقييم"}
               </button>
             </section>
+              </>
+            )}
           </form>
         ) : loading ? (
           <div className="flex justify-center py-16">

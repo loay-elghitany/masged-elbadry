@@ -25,6 +25,7 @@ export default function SardRegistrationPage() {
         parentPassword,
         children,
       });
+      setError("");
       setRegistration(data);
     } catch (requestError) {
       setError(
@@ -85,15 +86,26 @@ export default function SardRegistrationPage() {
               ))}
               <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <h3 className="font-bold">بيانات دخول ولي الأمر</h3>
+                {registration.parent.reused && (
+                  <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+                    تم ربط الأبناء بحساب ولي الأمر الحالي. استخدم كلمة المرور الحالية للحساب.
+                  </p>
+                )}
                 <p className="mt-3 break-all text-sm text-slate-600">البريد: <bdi className="font-semibold text-slate-900">{registration.parent.email}</bdi></p>
-                <p className="mt-2 break-all text-sm text-slate-600">كلمة المرور: <bdi className="font-semibold text-slate-900">{registration.parent.password}</bdi></p>
-                <button
-                  type="button"
-                  onClick={() => copyText(`البريد: ${registration.parent.email}\nكلمة المرور: ${registration.parent.password}`)}
-                  className="mt-4 rounded-xl border border-emerald-700 px-4 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-100"
-                >
-                  نسخ بيانات ولي الأمر
-                </button>
+                {registration.parent.password ? (
+                  <>
+                    <p className="mt-2 break-all text-sm text-slate-600">كلمة المرور: <bdi className="font-semibold text-slate-900">{registration.parent.password}</bdi></p>
+                    <button
+                      type="button"
+                      onClick={() => copyText(`البريد: ${registration.parent.email}\nكلمة المرور: ${registration.parent.password}`)}
+                      className="mt-4 rounded-xl border border-emerald-700 px-4 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-100"
+                    >
+                      نسخ بيانات ولي الأمر
+                    </button>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-600">استخدم كلمة المرور الحالية لولي الأمر.</p>
+                )}
               </article>
             </div>
             <div className="mt-6 flex flex-wrap justify-center gap-3">
@@ -144,7 +156,7 @@ export default function SardRegistrationPage() {
                 </fieldset>
               ))}
             </div>
-            {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-sm font-semibold text-rose-800" role="alert">{error}</p>}
+            {error && <p className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800" role="alert" aria-live="assertive">{error}</p>}
             <button type="submit" disabled={loading} className="mt-7 w-full rounded-xl bg-emerald-700 px-6 py-4 text-lg font-extrabold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60">
               {loading ? "جارٍ التسجيل..." : "تأكيد التسجيل في التحدي"}
             </button>

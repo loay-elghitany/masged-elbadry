@@ -59,6 +59,7 @@ test("renders student dashboard details without a leaderboard opt-in control", a
           student: {
             firstName: "Salma",
             lastName: "Youssef",
+            competitionCode: "BDR-101",
             avatar: "https://api.dicebear.com/6.x/pixel-art/svg?seed=Crown",
             badges: [
               {
@@ -76,6 +77,13 @@ test("renders student dashboard details without a leaderboard opt-in control", a
           teacher: { firstName: "Mona", lastName: "Teacher" },
           group: { _id: "group1", name: "حلقة الصبح" },
           evaluations: [],
+          sardEvaluation: {
+            completionStatus: "incomplete",
+            encouragementGrade: "جيد جداً",
+            stoppedAtSurah: "النازعات",
+            teacherNote: "أحسنت المحاولة، واصل اجتهادك.",
+            evaluatedBy: { name: "Mona Teacher" },
+          },
         },
       });
     }
@@ -116,6 +124,11 @@ test("renders student dashboard details without a leaderboard opt-in control", a
 
   expect(screen.getByText(/نجم الاجتهاد/i)).toBeInTheDocument();
   expect(screen.getByText(/مكافأة على الاجتهاد/i)).toBeInTheDocument();
+  expect(screen.getByText("تقدير: جيد جداً")).toBeInTheDocument();
+  expect(screen.getByText("السورة التي توقف عندها:")).toBeInTheDocument();
+  expect(screen.getByText("المعلم المُقيِّم: Mona Teacher")).toBeInTheDocument();
+  expect(screen.getByText("أحسنت المحاولة، واصل اجتهادك.")).toBeInTheDocument();
+  expect(screen.queryByText(/\/ 100/)).not.toBeInTheDocument();
 
   expect(screen.queryByText(/لوحة الشرف العامة/)).not.toBeInTheDocument();
 });

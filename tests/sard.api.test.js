@@ -87,18 +87,143 @@ describe("Juz Amma recitation competition", () => {
     expect(first.body.parent.email).toBe("parent.01001234567@albadri.local");
   });
 
-  it("handles duplicate parent phones with unique generated parent emails", async () => {
+  it("reuses the existing parent for a normalized phone and matching name", async () => {
     const first = await request(app)
       .post("/api/sard/register")
       .send(registration());
     const second = await request(app)
       .post("/api/sard/register")
-      .send(registration({ children: [{ childName: "Sara Yusuf", ageOrGrade: "9 سنة" }] }));
+      .send(
+        registration({
+          parentName: "  aHMED   yUSUF ",
+          parentPhone: "0100-123-4567",
+          children: [{ childName: "Sara Yusuf", ageOrGrade: "9 سنة" }],
+        }),
+      );
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
-    expect(second.body.parent.email).not.toBe(first.body.parent.email);
-    expect(await User.countDocuments({ role: "Parent" })).toBe(2);
+    expect(second.body.parent).toMatchObject({
+      id: first.body.parent.id,
+      email: first.body.parent.email,
+      password: null,
+      reused: true,
+    });
+    expect(await User.countDocuments({ role: "Parent" })).toBe(1);
+    expect(await User.countDocuments({ role: "Student" })).toBe(2);
+
+    const reusedParent = await User.findById(first.body.parent.id);
+    expect(reusedParent.childrenIds.map(String)).toEqual(
+      expect.arrayContaining([
+        first.body.student.id,
+        second.body.student.id,
+      ]),
+    );
+    const secondChild = await User.findById(second.body.student.id);
+    expect(secondChild.parentId.toString()).toBe(reusedParent._id.toString());
+    expect(secondChild.parentPhone).toBe("01001234567");
+  });
+
+  it("finds legacy parent accounts with phone formatting differences", async () => {
+    const legacyParent = await User.create({
+      firstName: "Ahmed",
+      lastName: "Yusuf",
+      email: "legacy-parent@example.com",
+      password: "parentpass123",
+      role: "Parent",
+      phone: "0100 123-4567",
+      childrenIds: [new mongoose.Types.ObjectId()],
+    });
+    await User.collection.updateOne(
+      { _id: legacyParent._id },
+      { $unset: { parentPhoneNormalized: "" } },
+    );
+
+    const response = await request(app)
+      .post("/api/sard/register")
+      .send(registration());
+
+    expect(response.status).toBe(201);
+    expect(response.body.parent.id).toBe(legacyParent._id.toString());
+    expect(response.body.parent.reused).toBe(true);
+    const reusedParent = await User.findById(legacyParent._id);
+    expect(reusedParent.phone).toBe("0100 123-4567");
+    expect(reusedParent.parentPhoneNormalized).toBeUndefined();
+    expect(await User.countDocuments({ role: "Parent" })).toBe(1);
+
+    const login = await request(app)
+      .post("/api/auth/login")
+      .send({ identifier: "01001234567", password: "parentpass123" });
+    expect(login.status).toBe(200);
+    expect(login.body.user.id).toBe(legacyParent._id.toString());
+  });
+
+  it("rejects a matching phone submitted under a different parent name", async () => {
+    await request(app)
+      .post("/api/sard/register")
+      .send(registration());
+
+    const response = await request(app)
+      .post("/api/sard/register")
+      .send(
+        registration({
+          parentName: "Mona Ali",
+          children: [{ childName: "Sara Yusuf", ageOrGrade: "9 سنة" }],
+        }),
+      );
+
+    expect(response.status).toBe(409);
+    expect(response.body.message).toBe(
+      "رقم الهاتف مسجل بالفعل باسم ولي أمر آخر (Ahmed Yusuf). يرجى التأكد من الرقم أو التسجيل بنفس اسم ولي الأمر لإضافة أبناء جدد.",
+    );
+    expect(await User.countDocuments({ role: "Parent" })).toBe(1);
+    expect(await User.countDocuments({ role: "Student" })).toBe(1);
+  });
+
+  it("recovers concurrent registrations by reusing the parent created first", async () => {
+    const [first, second] = await Promise.all([
+      request(app).post("/api/sard/register").send(registration()),
+      request(app)
+        .post("/api/sard/register")
+        .send(
+          registration({
+            children: [{ childName: "Sara Yusuf", ageOrGrade: "9 سنة" }],
+          }),
+        ),
+    ]);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(await User.countDocuments({ role: "Parent" })).toBe(1);
+    const parent = await User.findOne({ role: "Parent" });
+    expect(parent.childrenIds).toHaveLength(2);
+    expect(first.body.parent.id).toBe(parent._id.toString());
+    expect(second.body.parent.id).toBe(parent._id.toString());
+    expect([first.body.parent.reused, second.body.parent.reused]).toContain(true);
+  });
+
+  it("enforces unique normalized phone values for parent accounts", async () => {
+    await User.create({
+      firstName: "Ahmed",
+      lastName: "Yusuf",
+      email: "parent-one@example.com",
+      password: "parentpass123",
+      role: "Parent",
+      phone: "0100 123-4567",
+      childrenIds: [new mongoose.Types.ObjectId()],
+    });
+
+    await expect(
+      User.create({
+        firstName: "Mona",
+        lastName: "Ali",
+        email: "parent-two@example.com",
+        password: "parentpass123",
+        role: "Parent",
+        phone: "01001234567",
+        childrenIds: [new mongoose.Types.ObjectId()],
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
   });
 
   it("supports sign-in by child code and parent phone", async () => {
@@ -110,7 +235,7 @@ describe("Juz Amma recitation competition", () => {
       .send({ identifier: "BDR-101", password: "01001234567" });
     const parentLogin = await request(app)
       .post("/api/auth/login")
-      .send({ identifier: "01001234567", password: "01001234567" });
+      .send({ identifier: "0100 123-4567", password: "01001234567" });
 
     expect(registered.status).toBe(201);
     expect(childLogin.status).toBe(200);
@@ -218,11 +343,64 @@ describe("Juz Amma recitation competition", () => {
 
     const leaderboard = await request(app).get("/api/leaderboard");
     expect(leaderboard.body.leaderboard).toEqual([
-      expect.objectContaining({
-        competitionCode: "BDR-101",
-        finalScore: 189,
-        evaluatedBy: "Sheikh Amin",
-      }),
+      {
+        rank: 1,
+        studentName: "Yusuf Ahmed",
+        sardCode: "BDR-101",
+        score: 189,
+      },
     ]);
+    expect(leaderboard.body.encouragementList).toEqual([]);
+  });
+
+  it("saves incomplete evaluations without a numeric score and marks the contestant evaluated", async () => {
+    const teacher = await User.create({
+      firstName: "Mona",
+      lastName: "Teacher",
+      email: "mona@example.com",
+      password: "teacherpass123",
+      role: "Teacher",
+    });
+    const registered = await request(app)
+      .post("/api/sard/register")
+      .send(registration());
+
+    const response = await request(app)
+      .post("/api/teacher/sard-evaluations")
+      .set("Authorization", `Bearer ${makeToken(teacher)}`)
+      .send({
+        studentId: registered.body.student.id,
+        completionStatus: "incomplete",
+        encouragementGrade: "جيد جداً",
+        stoppedAtSurah: "النازعات",
+        teacherNote: "أحسنت، واصل المحاولة.",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.evaluation).toMatchObject({
+      completionStatus: "incomplete",
+      encouragementGrade: "جيد جداً",
+      stoppedAtSurah: "النازعات",
+      teacherNote: "أحسنت، واصل المحاولة.",
+      finalScore: null,
+      maxScore: null,
+      evaluatedBy: {
+        teacherId: teacher._id.toString(),
+        name: "Mona Teacher",
+      },
+    });
+    expect((await User.findById(registered.body.student.id)).sardEvaluated).toBe(true);
+
+    const leaderboard = await request(app).get("/api/leaderboard");
+    expect(leaderboard.body.leaderboard).toEqual([]);
+    expect(leaderboard.body.encouragementList).toEqual([
+      {
+        studentName: "Yusuf Ahmed",
+        sardCode: "BDR-101",
+        encouragementGrade: "جيد جداً",
+        stoppedAtSurah: "النازعات",
+      },
+    ]);
+    expect(JSON.stringify(leaderboard.body.encouragementList[0])).not.toMatch(/score|rank/i);
   });
 });

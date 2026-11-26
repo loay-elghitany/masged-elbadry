@@ -55,6 +55,7 @@ export default function SuperAdminDashboard() {
   const [sardSettingsStatus, setSardSettingsStatus] = useState("");
   const [sardReceptionSearch, setSardReceptionSearch] = useState("");
   const [sardStatus, setSardStatus] = useState("");
+  const [sardStatusIsError, setSardStatusIsError] = useState(false);
   const [sardWalkInParentName, setSardWalkInParentName] = useState("");
   const [sardWalkInPhone, setSardWalkInPhone] = useState("");
   const [sardWalkInPassword, setSardWalkInPassword] = useState("");
@@ -269,6 +270,7 @@ export default function SuperAdminDashboard() {
           setSardStatus(
             getApiErrorMessage(error, "تعذر تحميل بيانات مسابقة السرد."),
           );
+          setSardStatusIsError(true);
         }
       });
     return () => {
@@ -399,6 +401,8 @@ export default function SuperAdminDashboard() {
   const registerSardWalkIn = async (event) => {
     event.preventDefault();
     setSardStatus("");
+    setSardStatusIsError(false);
+    setSardWalkInRegistration(null);
     setSardWalkInLoading(true);
     try {
       const { data } = await api.post("/sard/register", {
@@ -408,6 +412,7 @@ export default function SuperAdminDashboard() {
         children: sardWalkInChildren,
       });
       setSardWalkInRegistration(data);
+      setSardStatusIsError(false);
       setSardStudents((current) => [
         ...data.children.map((child) => {
           const [firstName, ...lastParts] = child.childName.split(/\s+/);
@@ -416,10 +421,10 @@ export default function SuperAdminDashboard() {
             firstName,
             lastName: lastParts.join(" ") || firstName,
             competitionCode: child.sardCode,
-            parentPhone: sardWalkInPhone,
+              parentPhone: sardWalkInPhone,
             parentId: {
-              firstName: sardWalkInParentName,
-              lastName: "",
+                firstName: data.parent.fullName.split(/\s+/)[0],
+                lastName: data.parent.fullName.split(/\s+/).slice(1).join(" "),
             },
             latestEvaluation: null,
           };
@@ -432,6 +437,7 @@ export default function SuperAdminDashboard() {
       setSardWalkInChildren([{ childName: "", ageOrGrade: "" }]);
     } catch (error) {
       setSardStatus(getApiErrorMessage(error, "تعذر تسجيل المتسابقين."));
+      setSardStatusIsError(true);
     } finally {
       setSardWalkInLoading(false);
     }
@@ -441,9 +447,11 @@ export default function SuperAdminDashboard() {
     try {
       await navigator.clipboard.writeText(text);
       setSardStatus("تم نسخ بيانات الدخول.");
+      setSardStatusIsError(false);
     } catch (error) {
       console.error("Could not copy Sard registration credentials:", error);
       setSardStatus("تعذر النسخ تلقائياً. يمكنك تحديد البيانات ونسخها.");
+      setSardStatusIsError(true);
     }
   };
 
@@ -3045,8 +3053,15 @@ export default function SuperAdminDashboard() {
                           </article>
                         ))}
                       </div>
-                      <p className="mt-4 break-all text-sm">حساب ولي الأمر: <bdi>{sardWalkInRegistration.parent.email}</bdi> — كلمة المرور: <bdi>{sardWalkInRegistration.parent.password}</bdi></p>
-                      <button type="button" onClick={() => copySardCredentials(`${sardWalkInRegistration.parent.email}\n${sardWalkInRegistration.parent.password}`)} className="mt-2 rounded-lg border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800">نسخ بيانات ولي الأمر</button>
+                                      {sardWalkInRegistration.parent.reused && (
+                                        <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+                                          تم ربط الأبناء بحساب ولي الأمر الحالي. استخدم كلمة المرور الحالية للحساب.
+                                        </p>
+                                      )}
+                                      <p className="mt-4 break-all text-sm">حساب ولي الأمر: <bdi>{sardWalkInRegistration.parent.email}</bdi>{sardWalkInRegistration.parent.password && <> — كلمة المرور: <bdi>{sardWalkInRegistration.parent.password}</bdi></>}</p>
+                                      {sardWalkInRegistration.parent.password && (
+                                        <button type="button" onClick={() => copySardCredentials(`${sardWalkInRegistration.parent.email}\n${sardWalkInRegistration.parent.password}`)} className="mt-2 rounded-lg border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800">نسخ بيانات ولي الأمر</button>
+                                      )}
                     </div>
                   )}
                   <label className="block space-y-2 text-sm font-bold text-slate-700">
@@ -3094,7 +3109,7 @@ export default function SuperAdminDashboard() {
                     )}
                   </div>
                   {sardStatus && (
-                    <p role="status" className="mt-4 text-sm font-semibold text-slate-700">
+                    <p role={sardStatusIsError ? "alert" : "status"} aria-live={sardStatusIsError ? "assertive" : "polite"} className={`mt-4 rounded-xl p-3 text-sm font-semibold ${sardStatusIsError ? "border border-rose-200 bg-rose-50 text-rose-800" : "text-slate-700"}`}>
                       {sardStatus}
                     </p>
                   )}
@@ -3118,7 +3133,7 @@ export default function SuperAdminDashboard() {
                       <button type="button" onClick={() => window.print()} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold hover:bg-slate-50">طباعة</button>
                     </div>
                   </div>
-                  {sardStatus && <p role="status" className="mb-4 text-sm text-slate-600">{sardStatus}</p>}
+                  {sardStatus && <p role={sardStatusIsError ? "alert" : "status"} aria-live={sardStatusIsError ? "assertive" : "polite"} className={`mb-4 rounded-xl p-3 text-sm font-semibold ${sardStatusIsError ? "border border-rose-200 bg-rose-50 text-rose-800" : "text-slate-600"}`}>{sardStatus}</p>}
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[900px] text-right text-sm">
                       <thead className="bg-slate-50 text-slate-600">

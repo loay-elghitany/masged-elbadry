@@ -4,6 +4,84 @@ const Sequence = require("../models/sequence.model");
 const SardEvaluation = require("../models/sardEvaluation.model");
 const SystemSettings = require("../models/systemSettings.model");
 const juzAmmaSurahs = require("../utils/juzAmmaSurahs");
+const normalizePhone = require("../utils/normalizePhone");
+
+const normalizeName = (name) =>
+  String(name || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+
+const getParentFullName = (parent) =>
+  `${parent.firstName || ""} ${parent.lastName || ""}`.trim();
+
+const findSardParentsByPhone = async (phone, parentName) => {
+  const indexedParent = await User.findOne({
+    role: "Parent",
+    parentPhoneNormalized: phone,
+  });
+  if (
+    indexedParent &&
+    normalizeName(getParentFullName(indexedParent)) === normalizeName(parentName)
+  ) {
+    return [indexedParent];
+  }
+
+  const legacyParents = await User.find({
+    role: "Parent",
+    parentPhoneNormalized: { $exists: false },
+    phone: { $exists: true, $ne: "" },
+  }).select("firstName lastName email phone childrenIds");
+
+  const matchingLegacyParents = legacyParents.filter(
+    (candidate) => normalizePhone(candidate.phone) === phone,
+  );
+  return indexedParent
+    ? [indexedParent, ...matchingLegacyParents]
+    : matchingLegacyParents;
+};
+
+const attachSardChildrenToParent = async (parent, students) => {
+  const studentIds = students.map((student) => student._id);
+  await User.updateOne(
+    { _id: parent._id },
+    { $addToSet: { childrenIds: { $each: studentIds } } },
+  );
+  await User.updateMany(
+    { _id: { $in: studentIds } },
+    { $set: { parentId: parent._id } },
+  );
+};
+
+const makeSardRegistrationResponse = (
+  registeredChildren,
+  parent,
+  sharedPassword,
+  reusedParent,
+) => ({
+  success: true,
+  message: "تم التسجيل في تحدي سرد جزء عمّ بنجاح.",
+  competitionCode: registeredChildren[0].sardCode,
+  children: registeredChildren,
+  student: {
+    id: registeredChildren[0].id,
+    fullName: registeredChildren[0].childName,
+    email: registeredChildren[0].email,
+    password: registeredChildren[0].password,
+  },
+  parent: {
+    id: parent._id,
+    fullName: getParentFullName(parent),
+    email: parent.email,
+    password: reusedParent ? null : sharedPassword,
+    reused: reusedParent,
+  },
+});
+
+const parentNameConflict = (parent) => ({
+  success: false,
+  message: `رقم الهاتف مسجل بالفعل باسم ولي أمر آخر (${getParentFullName(parent)}). يرجى التأكد من الرقم أو التسجيل بنفس اسم ولي الأمر لإضافة أبناء جدد.`,
+});
 
 const defaultSardSettings = {
   maxScore: 100,
@@ -23,7 +101,12 @@ const getSettings = async () => {
 
 const registerSardStudent = async (req, res, next) => {
   const students = [];
+  const registeredChildren = [];
   let parent;
+  let parentWasCreated = false;
+  let reusedParent = false;
+  let normalizedParentPhone;
+  let sharedPassword;
   try {
     const {
       children,
@@ -31,8 +114,32 @@ const registerSardStudent = async (req, res, next) => {
       parentPhone,
       parentPassword,
     } = req.body;
+    normalizedParentPhone = normalizePhone(parentPhone);
+    if (normalizedParentPhone.replace(/\D/g, "").length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "رقم هاتف ولي الأمر غير صالح.",
+      });
+    }
     const [parentFirstName, ...parentLastParts] = parentName.trim().split(/\s+/);
     const parentLastName = parentLastParts.join(" ") || parentFirstName;
+
+    const parentsWithPhone = await findSardParentsByPhone(
+      normalizedParentPhone,
+      parentName,
+    );
+    if (parentsWithPhone.length) {
+      parent =
+        parentsWithPhone.find(
+          (candidate) =>
+            normalizeName(getParentFullName(candidate)) ===
+            normalizeName(parentName),
+        ) || parentsWithPhone[0];
+      if (normalizeName(getParentFullName(parent)) !== normalizeName(parentName)) {
+        return res.status(409).json(parentNameConflict(parent));
+      }
+      reusedParent = true;
+    }
 
     try {
       await Sequence.updateOne(
@@ -49,7 +156,6 @@ const registerSardStudent = async (req, res, next) => {
     } catch (error) {
       if (error.code !== 11000) throw error;
     }
-    const registeredChildren = [];
     for (const child of children) {
       const sequence = await Sequence.findOneAndUpdate(
         { _id: "sard-registration" },
@@ -75,7 +181,9 @@ const registerSardStudent = async (req, res, next) => {
 
       const sharedPassword =
         parentPassword ||
-        (parentPhone.length >= 8 ? parentPhone : `Sard@${sequence.value}`);
+        (normalizedParentPhone.length >= 8
+          ? normalizedParentPhone
+          : `Sard@${sequence.value}`);
       const student = await User.create({
         firstName,
         lastName,
@@ -84,7 +192,7 @@ const registerSardStudent = async (req, res, next) => {
         role: "Student",
         competitionCode,
         ageOrGrade: child.ageOrGrade,
-        parentPhone,
+        parentPhone: normalizedParentPhone,
       });
       students.push(student);
       registeredChildren.push({
@@ -96,69 +204,105 @@ const registerSardStudent = async (req, res, next) => {
       });
     }
 
-    const parentPhoneSlug =
-      parentPhone.replace(/[^a-zA-Z0-9]+/g, "") ||
-      registeredChildren[0].sardCode.replace("BDR-", "");
-    const baseParentEmail = `parent.${parentPhoneSlug}@albadri.local`.toLowerCase();
-    const sharedPassword =
+    sharedPassword =
       parentPassword ||
-      (parentPhone.length >= 8
-        ? parentPhone
+      (normalizedParentPhone.length >= 8
+        ? normalizedParentPhone
         : `Sard@${registeredChildren[0].sardCode.replace("BDR-", "")}`);
-    for (let suffix = 0; suffix < 100; suffix += 1) {
-      const email =
-        suffix === 0
-          ? baseParentEmail
-          : `parent.${parentPhoneSlug}.${suffix}@albadri.local`.toLowerCase();
-      if (await User.exists({ email })) continue;
-      try {
-        parent = await User.create({
-          firstName: parentFirstName,
-          lastName: parentLastName,
-          email,
-          password: sharedPassword,
-          role: "Parent",
-          phone: parentPhone,
-          childrenIds: students.map((student) => student._id),
-        });
-        break;
-      } catch (error) {
-        if (
-          error.code === 11000 &&
-          (error.keyPattern?.email || error.message.includes("email_1"))
-        ) {
-          continue;
+    if (!parent) {
+      const parentPhoneSlug =
+        normalizedParentPhone.replace(/[^a-zA-Z0-9]+/g, "") ||
+        registeredChildren[0].sardCode.replace("BDR-", "");
+      const baseParentEmail = `parent.${parentPhoneSlug}@albadri.local`.toLowerCase();
+      for (let suffix = 0; suffix < 100; suffix += 1) {
+        const email =
+          suffix === 0
+            ? baseParentEmail
+            : `parent.${parentPhoneSlug}.${suffix}@albadri.local`.toLowerCase();
+        if (await User.exists({ email })) continue;
+        try {
+          parent = await User.create({
+            firstName: parentFirstName,
+            lastName: parentLastName,
+            email,
+            password: sharedPassword,
+            role: "Parent",
+            phone: normalizedParentPhone,
+            parentPhoneNormalized: normalizedParentPhone,
+            childrenIds: students.map((student) => student._id),
+          });
+          parentWasCreated = true;
+          break;
+        } catch (error) {
+          if (
+            error.code === 11000 &&
+            (error.keyPattern?.email || error.message.includes("email_1"))
+          ) {
+            continue;
+          }
+          throw error;
         }
-        throw error;
+      }
+      if (!parent) throw new Error("Unable to generate a unique parent email.");
+    }
+
+    if (reusedParent) {
+      await attachSardChildrenToParent(parent, students);
+    } else {
+      await User.updateMany(
+        { _id: { $in: students.map((student) => student._id) } },
+        { $set: { parentId: parent._id } },
+      );
+    }
+
+    return res
+      .status(201)
+      .json(
+        makeSardRegistrationResponse(
+          registeredChildren,
+          parent,
+          sharedPassword,
+          reusedParent,
+        ),
+      );
+  } catch (error) {
+    if (
+      error.code === 11000 &&
+      error.keyPattern?.parentPhoneNormalized &&
+      !parentWasCreated
+    ) {
+      try {
+        const parentsWithPhone = await findSardParentsByPhone(
+          normalizedParentPhone,
+          req.body.parentName,
+        );
+        const matchingParent = parentsWithPhone.find(
+          (candidate) =>
+            normalizeName(getParentFullName(candidate)) ===
+            normalizeName(req.body.parentName),
+        );
+        if (matchingParent) {
+          await attachSardChildrenToParent(matchingParent, students);
+          return res
+            .status(201)
+            .json(
+              makeSardRegistrationResponse(
+                registeredChildren,
+                matchingParent,
+                sharedPassword,
+                true,
+              ),
+            );
+        }
+        if (parentsWithPhone.length) {
+          await User.deleteMany({ _id: { $in: students.map(({ _id }) => _id) } });
+          return res.status(409).json(parentNameConflict(parentsWithPhone[0]));
+        }
+      } catch (recoveryError) {
+        return next(recoveryError);
       }
     }
-    if (!parent) throw new Error("Unable to generate a unique parent email.");
-
-    await User.updateMany(
-      { _id: { $in: students.map((student) => student._id) } },
-      { $set: { parentId: parent._id } },
-    );
-
-    return res.status(201).json({
-      success: true,
-      message: "تم التسجيل في تحدي سرد جزء عمّ بنجاح.",
-      competitionCode: registeredChildren[0].sardCode,
-      children: registeredChildren,
-      student: {
-        id: students[0]._id,
-        fullName: registeredChildren[0].childName,
-        email: registeredChildren[0].email,
-        password: registeredChildren[0].password,
-      },
-      parent: {
-        id: parent._id,
-        fullName: `${parent.firstName} ${parent.lastName}`,
-        email: parent.email,
-        password: sharedPassword,
-      },
-    });
-  } catch (error) {
-    if (parent) await User.deleteOne({ _id: parent._id });
+    if (parentWasCreated && parent) await User.deleteOne({ _id: parent._id });
     if (students.length) {
       await User.deleteMany({ _id: { $in: students.map((student) => student._id) } });
     }
@@ -298,6 +442,10 @@ const createSardEvaluation = async (req, res, next) => {
   try {
     const {
       studentId,
+      completionStatus = "completed",
+      encouragementGrade,
+      stoppedAtSurah,
+      teacherNote,
       hesitationCount = 0,
       alertCount = 0,
       correctionCount = 0,
@@ -307,14 +455,38 @@ const createSardEvaluation = async (req, res, next) => {
     if (!mongoose.isValidObjectId(studentId)) {
       return res.status(400).json({ success: false, message: "يجب تحديد متسابق صالح." });
     }
-    const counts = [hesitationCount, alertCount, correctionCount].map(Number);
-    if (counts.some((count) => !Number.isInteger(count) || count < 0)) {
-      return res.status(400).json({ success: false, message: "أعداد الأخطاء يجب أن تكون أعداداً صحيحة غير سالبة." });
+    if (!["completed", "incomplete"].includes(completionStatus)) {
+      return res.status(400).json({ success: false, message: "حالة إتمام السرد غير صالحة." });
+    }
+    if (
+      completionStatus === "incomplete" &&
+      !["ممتاز", "جيد جداً", "جيد", "مقبول"].includes(encouragementGrade)
+    ) {
+      return res.status(400).json({ success: false, message: "يجب تحديد التقدير التشجيعي." });
+    }
+    if (teacherNote !== undefined && (typeof teacherNote !== "string" || teacherNote.length > 2000)) {
+      return res.status(400).json({ success: false, message: "الملاحظة التشجيعية غير صالحة." });
+    }
+    if (stoppedAtSurah && !juzAmmaSurahs.some((surah) => surah.surahName === stoppedAtSurah)) {
+      return res.status(400).json({ success: false, message: "السورة المحددة غير موجودة في جزء عمّ." });
     }
     if (!Array.isArray(mistakes)) {
       return res.status(400).json({ success: false, message: "قائمة الآيات غير صالحة." });
     }
-    for (const mistake of mistakes) {
+    if (
+      completionStatus === "incomplete" &&
+      (Number(hesitationCount) !== 0 ||
+        Number(alertCount) !== 0 ||
+        Number(correctionCount) !== 0 ||
+        mistakes.length)
+    ) {
+      return res.status(400).json({ success: false, message: "لا تُسجل الأخطاء للمشاركة التشجيعية." });
+    }
+    const counts = [hesitationCount, alertCount, correctionCount].map(Number);
+    if (counts.some((count) => !Number.isInteger(count) || count < 0)) {
+      return res.status(400).json({ success: false, message: "أعداد الأخطاء يجب أن تكون أعداداً صحيحة غير سالبة." });
+    }
+    for (const mistake of completionStatus === "completed" ? mistakes : []) {
       if (!mistake || typeof mistake !== "object") {
         return res.status(400).json({ success: false, message: "بيانات موضع المراجعة غير صالحة." });
       }
@@ -341,8 +513,8 @@ const createSardEvaluation = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "المتسابق غير موجود." });
     }
 
-    const settings = await getSettings();
     const teacherName = `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim();
+    const settings = completionStatus === "completed" ? await getSettings() : null;
     const evaluation = await SardEvaluation.create({
       studentId,
       teacherId: req.user._id,
@@ -350,24 +522,36 @@ const createSardEvaluation = async (req, res, next) => {
         teacherId: req.user._id,
         name: teacherName,
       },
-      maxScore: settings.maxScore,
-      hesitationCount: counts[0],
-      alertCount: counts[1],
-      correctionCount: counts[2],
-      hesitationPenalty: settings.hesitationPenalty,
-      alertPenalty: settings.alertPenalty,
-      correctionPenalty: settings.correctionPenalty,
-      mistakes: mistakes.map((mistake) => ({
-        surahName: mistake.surahName,
-        ayahNumber:
-          mistake.ayahNumber === null || Number(mistake.ayahNumber) === 0
-            ? null
-            : Number(mistake.ayahNumber),
-        type: mistake.type || "alert",
-      })),
-      notes,
+      completionStatus,
+      ...(completionStatus === "incomplete"
+        ? {
+            encouragementGrade,
+            stoppedAtSurah: stoppedAtSurah || undefined,
+            teacherNote: teacherNote?.trim() || undefined,
+            finalScore: null,
+            maxScore: null,
+          }
+        : {
+            maxScore: settings.maxScore,
+            hesitationCount: counts[0],
+            alertCount: counts[1],
+            correctionCount: counts[2],
+            hesitationPenalty: settings.hesitationPenalty,
+            alertPenalty: settings.alertPenalty,
+            correctionPenalty: settings.correctionPenalty,
+            mistakes: mistakes.map((mistake) => ({
+              surahName: mistake.surahName,
+              ayahNumber:
+                mistake.ayahNumber === null || Number(mistake.ayahNumber) === 0
+                  ? null
+                  : Number(mistake.ayahNumber),
+              type: mistake.type || "alert",
+            })),
+            notes,
+          }),
     });
     student.teacherId = req.user._id;
+    student.sardEvaluated = true;
     await student.save();
     return res.status(201).json({ success: true, evaluation });
   } catch (error) {

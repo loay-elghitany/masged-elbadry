@@ -588,6 +588,26 @@ export default function StudentDashboard() {
             <div className="mt-5 rounded-2xl border border-emerald-100 bg-white p-5">
               <h2 className="text-xl font-extrabold text-slate-900">نتيجة تحدي سرد جزء عمّ</h2>
               {dashboard.sardEvaluation ? (
+                dashboard.sardEvaluation.completionStatus === "incomplete" ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 text-amber-950">
+                    <p className="text-xl font-black">
+                      تقدير: {dashboard.sardEvaluation.encouragementGrade}
+                    </p>
+                    {dashboard.sardEvaluation.stoppedAtSurah && (
+                      <p className="mt-2 text-sm">
+                        السورة التي توقف عندها: <b>{dashboard.sardEvaluation.stoppedAtSurah}</b>
+                      </p>
+                    )}
+                    <p className="mt-2 text-sm">
+                      المعلم المُقيِّم: {dashboard.sardEvaluation.evaluatedBy?.name || (dashboard.sardEvaluation.teacherId
+                        ? `${dashboard.sardEvaluation.teacherId.firstName} ${dashboard.sardEvaluation.teacherId.lastName}`
+                        : "غير محدد")}
+                    </p>
+                    <p className="mt-3 font-semibold leading-7">
+                      {dashboard.sardEvaluation.teacherNote || "أحسنت المحاولة! كل خطوة تقرّبك من إتمام الجزء، واصل اجتهادك."}
+                    </p>
+                  </div>
+                ) : (
                 <>
                   <p className="mt-3 text-3xl font-black text-emerald-800">
                     {dashboard.sardEvaluation.finalScore} / {dashboard.sardEvaluation.maxScore}
@@ -618,6 +638,7 @@ export default function StudentDashboard() {
                     ) : <p className="mt-1 text-sm text-slate-500">لا توجد مواضع مراجعة مسجلة.</p>}
                   </div>
                 </>
+                )
               ) : (
                 <p className="mt-2 text-sm text-slate-600">لم يتم تسجيل نتيجة للتحدي بعد.</p>
               )}
